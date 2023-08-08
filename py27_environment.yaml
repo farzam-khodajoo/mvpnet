@@ -1,0 +1,13 @@
+name: mvpnet
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
+dependencies:         # everything under this, installed by conda
+- python=2.7
+
+- pip:                # everything under this, installed by pip
+  - open3d==0.8.0
+  - numpy
+  - imageio==1.4
+  - opencv-python==4.2.0.32
