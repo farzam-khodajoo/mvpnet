@@ -22,10 +22,10 @@ import open3d as o3d
 
 # DATA_DIR = '/data/dataset/ScanNet'
 # SCAN_DIR = 'scans'
-DATA_DIR = '/home/jiayuan/Projects/mvpnet_private/data/ScanNet'
-SCAN_DIR = 'scans_resize_160x120'
-SCAN_TEST_DIR = 'scans_test'
-META_DIR = '/home/jiayuan/Projects/mvpnet_private/mvpnet/data/meta_files'
+DATA_DIR = 'C:\\Users\\Arsham\\Desktop\\dataset\\scannet'
+SCAN_DIR = '2d_scans_resize_160x120'
+SCAN_TEST_DIR = '2d_scans_resize_160x120'
+META_DIR = 'C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\meta'
 
 SEG_CLASS_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39]
 # INST_CLASS_IDS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39]

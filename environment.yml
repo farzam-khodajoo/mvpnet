@@ -6,8 +6,8 @@ channels:
 dependencies:         # everything under this, installed by conda
 - python=3.6
 - pip
-- pytorch=1.2.0
-- torchvision=0.4.0
+- pytorch
+- torchvision
 - cudatoolkit=10.0
 - future
 - tensorboard

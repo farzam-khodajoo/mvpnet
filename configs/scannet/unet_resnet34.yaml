@@ -5,7 +5,7 @@ MODEL:
     num_classes: 20
     p: 0.5
 DATASET:
-  ROOT_DIR: "data/ScanNet"
+  ROOT_DIR: "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scans_resize_160x120\\"
   TYPE: "ScanNet2D"
   TRAIN: "train"
   VAL: "val"

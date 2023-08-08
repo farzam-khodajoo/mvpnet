@@ -7,10 +7,15 @@ import numpy as np
 import multiprocessing as mp
 
 resize = (160, 120)
+
+DATASET_DIRECTORY_2D = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scannet"
+OUTPUT_DIRECTORY_RESIZE = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scans_resize_{}x{}".format(resize[0], resize[1])
+
+
 # resize = (640, 480)
 # adapt the following paths
-raw_dir = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\output\\scans"
-out_dir = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\output\\scans_resize_{}x{}".format(resize[0], resize[1])
+raw_dir = DATASET_DIRECTORY_2D
+out_dir = OUTPUT_DIRECTORY_RESIZE
 exclude_frames = {
     'scene0243_00': ['1175', '1176', '1177', '1178', '1179', '1180', '1181', '1182', '1183', '1184'],
     'scene0538_00': ['1925', '1928', '1929', '1931', '1932', '1933'],
@@ -62,9 +67,7 @@ if not osp.exists(out_dir):
     os.makedirs(out_dir)
 
 scan_ids = sorted(os.listdir(raw_dir))
-for scan_id in scan_ids:
+for i, scan_id in enumerate(scan_ids):
+     print("[STATUS] Processing [{}/{}]".format(i+1, len(scan_ids)))
      worker_func(scan_id)
-#p = mp.Pool(processes=16)
-#p.map(worker_func, scan_ids, chunksize=1)
-#p.close()
-#p.join()
+     print("[STATUS] End processing [{}/{}]".format(i+1, len(scan_ids)))
