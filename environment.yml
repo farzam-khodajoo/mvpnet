@@ -6,6 +6,8 @@ channels:
 dependencies:         # everything under this, installed by conda
 - python=3.6
 - pip
+- pytorch=1.3.1
+- torchvision=0.11.3
 - cudatoolkit=10.0
 - future
 - tensorboard
@@ -24,5 +26,3 @@ dependencies:         # everything under this, installed by conda
 - plyfile
 - pip:                # everything under this, installed by pip
   - open3d==0.8.0
-  - wheel
-  - https://download.pytorch.org/whl/cu100/torch-1.1.0-cp37-cp37m-win_amd64.whl
