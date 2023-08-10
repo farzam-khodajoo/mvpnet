@@ -5,7 +5,7 @@ MODEL:
     num_classes: 20
     p: 0.5
 DATASET:
-  ROOT_DIR: "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scans_resize_160x120\\"
+  ROOT_DIR: "/content/dataset"
   TYPE: "ScanNet2D"
   TRAIN: "train"
   VAL: "val"
@@ -15,7 +15,7 @@ DATASET:
       color_jitter: (0.4, 0.4, 0.4)
       flip: 0.5
 DATALOADER:
-  NUM_WORKERS: 4
+  NUM_WORKERS: 1
 OPTIMIZER:
   TYPE: "SGD"
   BASE_LR: 0.005
@@ -25,15 +25,15 @@ SCHEDULER:
   MultiStepLR:
     gamma: 0.1
     milestones: (60000, 70000)
-  MAX_ITERATION: 80000
+  MAX_ITERATION: 10
 TRAIN:
-  BATCH_SIZE: 32
-  LOG_PERIOD: 100
-  SUMMARY_PERIOD: 100
-  CHECKPOINT_PERIOD: 1000
+  BATCH_SIZE: 2
+  LOG_PERIOD: 2
+  SUMMARY_PERIOD: 2
+  CHECKPOINT_PERIOD: 2
   MAX_TO_KEEP: 2
   LABEL_WEIGHTS_PATH: "mvpnet/data/meta_files/scannetv2_train_2d_log_weights_20_classes.txt"
 VAL:
-  BATCH_SIZE: 32
-  PERIOD: 2000
-  LOG_PERIOD: 100
+  BATCH_SIZE: 2
+  PERIOD: 2
+  LOG_PERIOD: 2

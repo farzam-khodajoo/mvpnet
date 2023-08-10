@@ -14,8 +14,8 @@ DATASET:
   TRAIN: "train"
   VAL: "val"
   ScanNet2D3DChunks:
-    cache_dir: "data/ScanNet/cache_rgbd"
-    image_dir: "data/ScanNet/scans_resize_160x120"
+    cache_dir: "/content/dataset/pickles"
+    image_dir: "/content/dataset/scans_resize_160x120"
     resize: (160, 120)
     num_rgbd_frames: 3
     k: 3
