@@ -2,6 +2,7 @@ import os
 import shutil
 import glob
 from pathlib import Path
+import sys
 
 PATH_3D_DATASET = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\scans"
 PATH_2D_DATASET = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scannet"
@@ -9,10 +10,14 @@ PATH_RESIZED_DATASET = (
     "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scans_resize_160x120"
 )
 
-# changing to windows's path style
-PATH_3D_DATASET.replace("/", "\\")
-PATH_2D_DATASET.replace("/", "\\")
-PATH_RESIZED_DATASET.replace("/", "\\")
+is_windows = sys.platform == "win32"
+
+if is_windows:
+    # changing to windows's path style
+    PATH_3D_DATASET.replace("/", "\\")
+    PATH_2D_DATASET.replace("/", "\\")
+    PATH_RESIZED_DATASET.replace("/", "\\")
+
 
 # check dataset exists
 dataset_3d_exists = os.path.isdir(PATH_3D_DATASET)
