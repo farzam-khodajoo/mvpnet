@@ -4,8 +4,10 @@ from os import path
 from pathlib import Path
 from random import shuffle
 
-DATASET_DIRECTORY_3D = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\scans"
-OUTPUT_META_DIR = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\meta"
+from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
+
+DATASET_DIRECTORY_3D = SCANNET_DIRECTORY
+OUTPUT_META_DIR = os.path.join(ROOT_DIRECTORY, "meta")
 
 #NOTE edit this
 # all ratios should sum in 100

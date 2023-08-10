@@ -4,11 +4,12 @@ import glob
 from pathlib import Path
 import sys
 
-PATH_3D_DATASET = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\scans"
-PATH_2D_DATASET = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scannet"
-PATH_RESIZED_DATASET = (
-    "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scans_resize_160x120"
-)
+from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
+
+PATH_3D_DATASET = SCANNET_DIRECTORY
+PATH_2D_DATASET = os.path.join(ROOT_DIRECTORY, "2d_scannet")
+PATH_RESIZED_DATASET = os.path.join(ROOT_DIRECTORY, "scans_resize_160x120")
+
 
 is_windows = sys.platform == "win32"
 

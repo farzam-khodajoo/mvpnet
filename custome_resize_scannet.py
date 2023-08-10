@@ -7,10 +7,12 @@ import numpy as np
 import multiprocessing as mp
 import sys
 
+from SETTING import ROOT_DIRECTORY
+
 resize = (160, 120)
 
-DATASET_DIRECTORY_2D = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scannet"
-OUTPUT_DIRECTORY_RESIZE = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet"
+DATASET_DIRECTORY_2D = os.path.join(ROOT_DIRECTORY, "2d_scannet")
+OUTPUT_DIRECTORY_RESIZE = ROOT_DIRECTORY
 
 #NOTE DO NOT edit this.
 OUTPUT_DIRECTORY_RESIZE += "/scans_resize_{}x{}".format(resize[0], resize[1])

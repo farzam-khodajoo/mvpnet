@@ -5,9 +5,10 @@ import zipfile
 from pathlib import Path
 import sys
 
+from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 
-DATASET_DIRECTORY = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\scans"
-OUTPUT_DIRECTORY = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scannet"
+DATASET_DIRECTORY = SCANNET_DIRECTORY
+OUTPUT_DIRECTORY = os.path.join(ROOT_DIRECTORY, "2d_scannet")
 
 
 is_windows = sys.platform == "win32"

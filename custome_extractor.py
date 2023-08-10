@@ -13,11 +13,13 @@ import sys
 # -- pip install numpy  imageio==1.4 opencv-python==4.2.0.32
 # versions were selected manually to support python <= 2.x
 
+from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY, MULTI_CORE_PROCESSING
+
 #NOTE Edit this:
-DATASET_DIRECTORY = "C:\Users\Arsham\Desktop\dataset\scannet\scans" # Replace with your own dataset
-OUTPUT_DIRECTORY = "C:\Users\Arsham\Desktop\dataset\scannet" # Replace with your own prefered directory
+DATASET_DIRECTORY = SCANNET_DIRECTORY # Replace with your own dataset
+OUTPUT_DIRECTORY = ROOT_DIRECTORY # Replace with your own prefered directory
 __SUB_PREFIX = "2d_scannet"
-MULTI_PROCESSING_CORE = 1
+MULTI_PROCESSING_CORE = MULTI_CORE_PROCESSING
 
 # Python 2 script
 MODULE_PATH = "%s\\mvpnet\\data\\preprocess\\SensReader\\reader.py" % os.getcwd()
