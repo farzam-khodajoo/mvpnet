@@ -140,11 +140,11 @@ def main():
     parser.add_argument('--skip_existing', action='store_true', help='skip download of existing files when downloading full release')
     args = parser.parse_args()
 
-    print('By pressing any key to continue you confirm that you have agreed to the ScanNet terms of use as described at:')
-    print(TOS_URL)
-    print('***')
-    print('Press any key to continue, or CTRL-C to exit.')
-    key = input('')
+    #print('By pressing any key to continue you confirm that you have agreed to the ScanNet terms of use as described at:')
+    #print(TOS_URL)
+    #print('***')
+    #print('Press any key to continue, or CTRL-C to exit.')
+    #key = input('')
 
     if args.v1:
         global RELEASE
@@ -208,11 +208,11 @@ def main():
             out_dir = os.path.join(out_dir_scans, scan_id) if not is_test_scan else os.path.join(out_dir_test_scans, scan_id)
             scan_file_types = file_types if not is_test_scan else file_types_test
             use_v1_sens = not is_test_scan
-            if not is_test_scan and not args.v1 and '.sens' in scan_file_types:
-                print('Note: ScanNet v2 uses the same .sens files as ScanNet v1: Press \'n\' to exclude downloading .sens files for each scan')
-                key = input('')
-                if key.strip().lower() == 'n':
-                    scan_file_types.remove('.sens')
+            #if not is_test_scan and not args.v1 and '.sens' in scan_file_types:
+            #    print('Note: ScanNet v2 uses the same .sens files as ScanNet v1: Press \'n\' to exclude downloading .sens files for each scan')
+            #    key = input('')
+            #    if key.strip().lower() == 'n':
+            #        scan_file_types.remove('.sens')
             download_scan(scan_id, out_dir, scan_file_types, use_v1_sens, skip_existing=args.skip_existing)
     else:  # download entire release
         if len(file_types) == len(FILETYPES):
