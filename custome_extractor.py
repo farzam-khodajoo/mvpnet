@@ -3,6 +3,7 @@ import os
 import os.path as osp
 import subprocess
 import multiprocessing as mp
+import sys
 
 # 1. Place this file in master directory i.e sample place as enviroment.yaml
 # 2. create python version 2.7 enviroment:
@@ -21,9 +22,15 @@ MULTI_PROCESSING_CORE = 1
 # Python 2 script
 MODULE_PATH = "%s\\mvpnet\\data\\preprocess\\SensReader\\reader.py" % os.getcwd()
 
-# changing to windows's path style
-DATASET_DIRECTORY.replace("/", "\\")
-OUTPUT_DIRECTORY.replace("/", "\\")
+is_linux = sys.platform == "linux"
+
+if is_linux:
+    MODULE_PATH.replace("\\", "/")
+
+if not is_linux:
+    # changing to windows's path style
+    DATASET_DIRECTORY.replace("/", "\\")
+    OUTPUT_DIRECTORY.replace("/", "\\")
 
 
 # check dataset exists
