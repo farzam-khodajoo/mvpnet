@@ -10,7 +10,9 @@ import sys
 resize = (160, 120)
 
 DATASET_DIRECTORY_2D = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scannet"
-OUTPUT_DIRECTORY_RESIZE = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scans_resize_{}x{}".format(resize[0], resize[1])
+OUTPUT_DIRECTORY_RESIZE = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet"
+
+OUTPUT_DIRECTORY_RESIZE += "/scans_resize_{}x{}".format(resize[0], resize[1])
 
 is_windows = sys.platform == "win32"
 
@@ -19,6 +21,8 @@ if is_windows:
     DATASET_DIRECTORY_2D = DATASET_DIRECTORY_2D.replace("/", "\\")
     OUTPUT_DIRECTORY_RESIZE = OUTPUT_DIRECTORY_RESIZE.replace("/", "\\")
 
+print(OUTPUT_DIRECTORY_RESIZE)
+exit()
 
 # resize = (640, 480)
 # adapt the following paths
