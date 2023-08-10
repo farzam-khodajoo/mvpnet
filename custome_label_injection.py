@@ -3,14 +3,20 @@ import os.path as osp
 import glob
 import zipfile
 from pathlib import Path
+import sys
+
 
 DATASET_DIRECTORY = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\scans"
 OUTPUT_DIRECTORY = "C:\\Users\\Arsham\\Desktop\\dataset\\scannet\\2d_scannet"
 
 
-# changing to windows's path style
-DATASET_DIRECTORY.replace("/", "\\")
-OUTPUT_DIRECTORY.replace("/", "\\")
+is_windows = sys.platform == "win32"
+
+if is_windows:
+    # changing to windows's path style
+    DATASET_DIRECTORY = DATASET_DIRECTORY.replace("/", "\\")
+    OUTPUT_DIRECTORY = OUTPUT_DIRECTORY.replace("/", "\\")
+
 
 # check dataset exists
 dataset_exists = osp.isdir(DATASET_DIRECTORY)
