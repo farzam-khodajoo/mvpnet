@@ -22,15 +22,15 @@ MULTI_PROCESSING_CORE = 1
 # Python 2 script
 MODULE_PATH = "%s\\mvpnet\\data\\preprocess\\SensReader\\reader.py" % os.getcwd()
 
-is_linux = sys.platform == "linux"
+is_windows = sys.platform == "win32"
 
-if is_linux:
-    MODULE_PATH.replace("\\", "/")
+if not is_windows:
+    MODULE_PATH = MODULE_PATH.replace("\\", "/")
 
-if not is_linux:
+if is_windows:
     # changing to windows's path style
-    DATASET_DIRECTORY.replace("/", "\\")
-    OUTPUT_DIRECTORY.replace("/", "\\")
+    DATASET_DIRECTORY = DATASET_DIRECTORY.replace("/", "\\")
+    OUTPUT_DIRECTORY = OUTPUT_DIRECTORY.replace("/", "\\")
 
 
 # check dataset exists
