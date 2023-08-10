@@ -137,8 +137,8 @@ def train(cfg, output_dir='', run_name=''):
     val_metric_logger.add_meters(val_metric)
 
     # wrap the dataloader
-    batch_sampler = train_dataloader.batch_sampler
-    train_dataloader.batch_sampler = IterationBasedBatchSampler(batch_sampler, max_iteration, start_iteration)
+    #batch_sampler = train_dataloader.batch_sampler
+    #train_dataloader.batch_sampler = IterationBasedBatchSampler(batch_sampler, max_iteration, start_iteration)
 
     def setup_train():
         # set training mode
