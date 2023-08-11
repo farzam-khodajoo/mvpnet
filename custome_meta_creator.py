@@ -6,7 +6,7 @@ from random import shuffle
 
 from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 
-DATASET_DIRECTORY_3D = SCANNET_DIRECTORY
+DATASET_DIRECTORY_3D = os.path.join(ROOT_DIRECTORY, "scans_resize_160x120")
 OUTPUT_META_DIR = os.path.join(ROOT_DIRECTORY, "meta")
 
 #NOTE edit this
