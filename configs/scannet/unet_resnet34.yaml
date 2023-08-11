@@ -29,7 +29,7 @@ SCHEDULER:
 TRAIN:
   BATCH_SIZE: 32
   LOG_PERIOD: 20
-  SUMMARY_PERIOD: 5
+  SUMMARY_PERIOD: 50
   CHECKPOINT_PERIOD: 100
   MAX_TO_KEEP: 2
   LABEL_WEIGHTS_PATH: "mvpnet/data/meta_files/scannetv2_train_2d_log_weights_20_classes.txt"

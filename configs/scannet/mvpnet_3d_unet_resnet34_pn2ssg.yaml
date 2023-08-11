@@ -1,7 +1,7 @@
 TASK: "mvpnet_3d"
 MODEL_2D:
   TYPE: "UNetResNet34"
-  CKPT_PATH: "outputs/scannet/unet_resnet34/model_080000.pth"
+  CKPT_PATH: "outputs/scannet/unet_resnet34/model_000100.pth"
   UNetResNet34:
     num_classes: 20
     p: 0.5  # keep it as pretrained, otherwise it will affect model.eval() behavior
@@ -42,6 +42,7 @@ TRAIN:
   MAX_TO_KEEP: 2
   FROZEN_PATTERNS: ("module:net_2d", "net_2d")
   LABEL_WEIGHTS_PATH: "mvpnet/data/meta_files/scannetv2_train_3d_log_weights_20_classes.txt"
+  EPOCHS: 10
 VAL:
   BATCH_SIZE: 32
   PERIOD: 1000
