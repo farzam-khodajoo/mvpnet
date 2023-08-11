@@ -16,6 +16,7 @@ _META_DIR = osp.abspath(osp.join(_CUR_DIR, 'meta_files'))
 from mvpnet.data.scannet_2d import load_class_mapping, read_label_mapping
 from mvpnet.utils.chunk_util import scene2chunks_legacy
 
+logging.basicConfig(level=logging.INFO)
 
 def select_frames(rgbd_overlap, num_rgbd_frames):
     selected_frames = []
@@ -192,6 +193,8 @@ class ScanNet2D3DChunks(Dataset):
         scan_id = data_dict['scan_id']
         scan_dir = osp.join(self.image_dir, scan_id)
         paths = self._get_paths(scan_dir)
+        
+        logging.info("2D sample path: {}".format(paths))
 
         # load data
         # nb: number of base points; np: number of all points; nc: number of chunk points
@@ -283,6 +286,8 @@ class ScanNet2D3DChunks(Dataset):
             image_xyz_list.append(image_xyz)
             image_mask_list.append(image_mask)
 
+        logging.info("image_xyz_list loaded with {}".format(len(image_xyz_list)))
+
         # post-process, especially for horizontal flip
         image_ind_list = []
         for i in range(self.num_rgbd_frames):
@@ -300,6 +305,8 @@ class ScanNet2D3DChunks(Dataset):
                 image_ind_list.append(image_ind + i * h * w)
             else:
                 image_ind_list.append([])
+
+        
 
         images = np.stack(image_list, axis=0)  # (nv, h, w, 3)
         image_xyz_valid = np.concatenate([image_xyz[image_mask] for image_xyz, image_mask in
