@@ -273,15 +273,18 @@ class ScanNet2D3DChunks(Dataset):
             if not np.any(image_mask):
                 print('Invalid depth map for frame {} of scan {}.'.format(frame_id, scan_id))
 
+
+            #NOTE for some reason this code block cause image_mask being empty (all indices become False)
+            # and this cause error in line 320
             # set invalid flags outsides the chunk
-            if chunk_box is not None:
-                margin = 0.1
-                in_chunk_mask = np.logical_and.reduce(
-                    (image_xyz[:, 0] > chunk_box[0] - margin,
-                     image_xyz[:, 0] < chunk_box[2] + margin,
-                     image_xyz[:, 1] > chunk_box[1] - margin,
-                     image_xyz[:, 1] < chunk_box[3] + margin))
-                image_mask = np.logical_and(image_mask, in_chunk_mask)
+            #if chunk_box is not None:
+            #    margin = 0.1
+            #    in_chunk_mask = np.logical_and.reduce(
+            #        (image_xyz[:, 0] > chunk_box[0] - margin,
+            #         image_xyz[:, 0] < chunk_box[2] + margin,
+            #         image_xyz[:, 1] > chunk_box[1] - margin,
+            #         image_xyz[:, 1] < chunk_box[3] + margin))
+            #    image_mask = np.logical_and(image_mask, in_chunk_mask)
 
             image_xyz_list.append(image_xyz)
             image_mask_list.append(image_mask)
