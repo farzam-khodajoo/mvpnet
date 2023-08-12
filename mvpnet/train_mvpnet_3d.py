@@ -47,11 +47,18 @@ def parse_args():
         default=None,
         nargs=argparse.REMAINDER,
     )
+
+    parser.add_argument(
+        "--epochs",
+        help="how many times to run over dataloader",
+        default=5,
+        type=int
+    )
     args = parser.parse_args()
     return args
 
 
-def train(cfg, output_dir='', run_name=''):
+def train(cfg, output_dir='', run_name='', epoch=5):
     # ---------------------------------------------------------------------------- #
     # Build models, optimizer, scheduler, checkpointer, etc.
     # It is recommended not to modify this section.
@@ -157,7 +164,8 @@ def train(cfg, output_dir='', run_name=''):
     end = time.time()
 
 
-    for _ in range(cfg.TRAIN.EPOCHS):
+    for epoch_iteratioin in range(epoch):
+        print("running epoch: {}".format(epoch_iteratioin))
         for iteration, data_batch in enumerate(train_dataloader, start_iteration):
             data_time = time.time() - end
             # copy data from cpu to gpu
@@ -333,7 +341,7 @@ def main():
     logger.info('Running with config:\n{}'.format(cfg))
 
     assert cfg.TASK == 'mvpnet_3d'
-    train(cfg, output_dir, run_name)
+    train(cfg, output_dir, run_name, epoch=args.epochs)
 
 
 if __name__ == '__main__':

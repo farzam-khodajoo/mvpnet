@@ -16,8 +16,6 @@ _META_DIR = osp.abspath(osp.join(_CUR_DIR, 'meta_files'))
 from mvpnet.data.scannet_2d import load_class_mapping, read_label_mapping
 from mvpnet.utils.chunk_util import scene2chunks_legacy
 
-logging.basicConfig(level=logging.INFO)
-
 def select_frames(rgbd_overlap, num_rgbd_frames):
     selected_frames = []
     # make a copy to avoid modifying input

@@ -42,7 +42,6 @@ TRAIN:
   MAX_TO_KEEP: 2
   FROZEN_PATTERNS: ("module:net_2d", "net_2d")
   LABEL_WEIGHTS_PATH: "mvpnet/data/meta_files/scannetv2_train_3d_log_weights_20_classes.txt"
-  EPOCHS: 10
 VAL:
   BATCH_SIZE: 32
   PERIOD: 1000
