@@ -16,21 +16,15 @@ from plyfile import PlyData
 from PIL import Image
 import open3d as o3d
 
-# this will be to root of all dataset, which means 2D dataset, 
-# metafiles and cached samples will be stored.
-# after the process has been completed, this directory will contain a structure like this:
-# - /content/dataset
-# - - - resized_scans_120_160/
-# - - - pickles/
-# - - - metafiles/
-ROOT_DIRECTORY = "/content/dataset"
-# this directory is where you downloaded scannet dataset to.
-# which should contain samples named in this format: scene0**_**
-# this folder can also be inside ROOT_DIRECTORY, as it makes no difference.
-SCANNET_DIRECTORY = "/content/dataset/scans"
-# choose how many processing core you would like to be used.
-MULTI_CORE_PROCESSING = 1
+import sys
+is_windows = sys.platform == "win32"
 
+extend_path = os.getcwd()
+if is_windows:
+    extend_path = extend_path.replace("/", "\\")
+
+sys.path.append(extend_path)
+from SETTING import ROOT_DIRECTORY
 
 # DATA_DIR = '/datasets_local/ScanNet'
 # SCAN_DIR = 'scans_resize_160x120'
