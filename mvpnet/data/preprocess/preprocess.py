@@ -37,8 +37,18 @@ SCAN_DIR = "scans_resize_160x120"
 SCAN_TEST_DIR = "scans_resize_160x120"
 META_DIR = "/content/mvpnet/mvpnet/data/meta_files"
 import sys
+
+
+
 if sys.platform != "linux":
-    META_DIR = "{}\\mvpnet\\data\\meta_files".format(os.getcwd())
+    from pathlib import Path
+    meta_path = Path.cwd() / "mvpnet" / "data" / "meta_files" 
+    if not meta_path.exists():
+        print("! meta folder not found  at {}".format(meta_path))
+        exit()
+    META_DIR = str(meta_path)
+
+
 
 SEG_CLASS_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39]
 # INST_CLASS_IDS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39]
@@ -119,7 +129,9 @@ def compute_rgbd_knn(frame_ids, cam_matrix, paths, whole_scene_pts,
     overlaps = np.zeros([len(base_point_ind), len(frame_ids)], dtype=bool)
 
     # visualize base points
+    print("checking debug")
     if _DEBUG:
+        print("debugging..")
         from mvpnet.utils.o3d_util import draw_point_cloud
         pts_vis = draw_point_cloud(whole_scene_pts, colors=[0., 1., 0.])
         base_pts_vis = draw_point_cloud(base_pts, colors=[1., 0., 0.])
@@ -266,11 +278,13 @@ def process_scan_3d_sem_seg(scan_id, is_test=False, compute_rgbd_overlap=False, 
 
 
 def main():
+    global _DEBUG
     parser = argparse.ArgumentParser()
     parser.add_argument('-o', '--output-dir', type=str, required=True, help='output directory')
     parser.add_argument('-n', '--num-workers', default=16, type=int, help='number of workers')
     parser.add_argument('-s', '--split', required=True, type=str, help='split[train/val/test]')
     parser.add_argument('--rgbd', action='store_true', help='compute RGBD overlaps for MVPNet')
+    parser.add_argument('--debug', action="store_true", help='show .ply files with open3d')
     args = parser.parse_args()
 
     split_filename = osp.join(META_DIR, 'scannetv2_{:s}.txt'.format(args.split))
@@ -280,8 +294,12 @@ def main():
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
+
+
     # Debug
-    if _DEBUG:
+    if args.debug:
+        _DEBUG = True
+        print("triggered")
         for scan_id in scan_ids:
             process_scan_3d_sem_seg(scan_id, compute_rgbd_overlap=args.rgbd, is_test=is_test)
         exit(0)

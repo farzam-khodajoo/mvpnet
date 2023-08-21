@@ -83,6 +83,7 @@ def label2color(labels, colors=None, style='scannet'):
         raise KeyError('Unknown style: {}'.format(style))
     if colors is None:
         colors = np.zeros([labels.shape[0], 3])
+        print("color: {}".format(colors.shape))
     else:
         assert colors.ndim == 2 and colors.shape[1] == 3
         colors = colors.copy()
