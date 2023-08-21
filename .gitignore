@@ -1,8 +1,4 @@
-configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml
-mvpnet/data/meta_files/scannetv2_test.txt
-mvpnet/data/meta_files/scannetv2_train.txt
-mvpnet/data/meta_files/scannetv2_val.txt
-SETTING.py
+
 
 # compilation and distribution
 __pycache__
