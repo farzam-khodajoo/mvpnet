@@ -1,3 +1,4 @@
+import torch
 import argparse
 import numpy as np
 from pathlib import Path
@@ -8,7 +9,8 @@ from mvpnet.utils.o3d_util import draw_point_cloud
 from mvpnet.utils.visualize import label2color
 from mvpnet.config.mvpnet_3d import cfg
 
-# from mvpnet.models.build import build_model_mvpnet_3d
+from mvpnet.models.build import build_model_mvpnet_3d
+from mvpnet.models.build import build_model_sem_seg_2d
 from mvpnet.data.scannet_2d3d import ScanNet2D3DChunksTest
 
 from SETTING import ROOT_DIRECTORY
@@ -74,7 +76,7 @@ def main():
 
     # plot 3D space with labels
     if not args.less:
-        print("Loading 3D space..")
+        print("Loading 3D space ..")
         point_cloud_path, labeled_cloud_path = query_3d_samples(RESIZE_DATASET / args.id)
         label_point_cloud, _, label = read_ply(labeled_cloud_path)
         result = draw_point_cloud(
@@ -83,7 +85,7 @@ def main():
         o3d.visualization.draw_geometries([result], width=480, height=480)
 
     if args.predict:
-        print("Loading Model..")
+        print("Loading model ..")
         model_config = str(
             Path.cwd() / "configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml"
         )
@@ -108,14 +110,56 @@ def main():
             exit()
 
         test_dataset = ScanNet2D3DChunksTest(
-            cache_dir=cache_dir, image_dir=image_dir, split="val", to_tensor=True
+            cache_dir=cache_dir, image_dir=image_dir, split="val", to_tensor=True, num_rgbd_frames=4
         )
 
         search_id = [d for d in test_dataset.data if d["scan_id"] == args.id]
         if len(search_id) == 0:
             print("scanid {} not found in dataset !".format(search_id))
+            print(test_dataset.data)
+            exit()
+
+        scan_index = None
+
+        for idx, dc in enumerate(test_dataset.data):
+          if dc["scan_id"] == args.id: 
+            scan_index = idx
+            print("index {} has been found".format(idx))
+
+        if scan_index is None:
+          print("scan index {} not found in dataset".format(args.id))
+
+        print("Fetch sample from dataset ..")
+        input_sample = test_dataset.__getitem__(scan_index)[0]
+
+        print("Building model ..")
+        cfg.merge_from_file(str(model_config))
+        model = build_model_mvpnet_3d(cfg)[0]
+        model = model.cuda()
+        model.eval()
+
+        print("Predict ..")
+
+        scan_id = test_dataset.scan_ids[scan_index]
+        points = test_dataset.data[scan_index]['points'].astype(np.float32)
+
+        chunk_ind = input_sample.pop('chunk_ind')
+        chunk_points = input_sample['points']
+        chunk_nb_pts = chunk_points.shape[1]
+
+        if chunk_nb_pts < 2048:
+          print('Too sparse chunk in {} with {} points.'.format(scan_id, chunk_nb_pts))
+          pad = np.random.randint(chunk_nb_pts, size=2048 - chunk_nb_pts)
+          choice = np.hstack([np.arange(chunk_nb_pts), pad])
+          input_sample['points'] = input_sample['points'][:, choice]
+          input_sample['knn_indices'] = input_sample['knn_indices'][choice]
 
 
+        data_batch = {k: torch.tensor([v]) for k, v in input_sample.items()}
+        data_batch = {k: v.cuda(non_blocking=True) for k, v in data_batch.items()}
+        predict = model(data_batch)
+        segmentation_logit = predict["seg_logit"]
+        
 
 if __name__ == "__main__":
     main()
