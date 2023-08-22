@@ -1,5 +1,6 @@
 import torch
 import argparse
+import pickle
 import numpy as np
 from pathlib import Path
 from glob import glob
@@ -9,8 +10,6 @@ from mvpnet.utils.o3d_util import draw_point_cloud
 from mvpnet.utils.visualize import label2color
 from mvpnet.config.mvpnet_3d import cfg
 
-from mvpnet.models.build import build_model_mvpnet_3d
-from mvpnet.models.build import build_model_sem_seg_2d
 from mvpnet.data.scannet_2d3d import ScanNet2D3DChunksTest
 
 from SETTING import ROOT_DIRECTORY
@@ -63,6 +62,20 @@ def main():
         help="visualize predict of semantic segmentation",
     )
     parser.add_argument(
+        "--save",
+        type=str,
+        default=False,
+        required=False,
+        help="Save segmentation's output as pickle file",
+    )
+    parser.add_argument(
+        "--load",
+        type=str,
+        default=False,
+        required=False,
+        help="Load segmentation's output as pickle file",
+    )
+    parser.add_argument(
         "--less",
         action="store_true",
         default=False,
@@ -74,18 +87,39 @@ def main():
         print("scan_id {} not found !".format(args.id))
         exit()
 
+
+    point_cloud_path, labeled_cloud_path = query_3d_samples(
+        RESIZE_DATASET / args.id
+    )
+    label_point_cloud, _, label = read_ply(labeled_cloud_path)
+
     # plot 3D space with labels
     if not args.less:
         print("Loading 3D space ..")
-        point_cloud_path, labeled_cloud_path = query_3d_samples(RESIZE_DATASET / args.id)
-        label_point_cloud, _, label = read_ply(labeled_cloud_path)
         result = draw_point_cloud(
             label_point_cloud, label2color(label, style="nyu40_raw")
         )
         o3d.visualization.draw_geometries([result], width=480, height=480)
 
+    if not args.load is False:
+        if not Path(args.load).exists():
+           print("loading failed ! path {} not found".format(args.load))
+
+        print("Loading pickle from {}".format(args.load))
+
+        with open(args.load, "rb") as handle:
+            predict = pickle.load(handle)
+            print(predict["seg_logit"].size())
+            print(label.shape)
+
+        seg_logit = predict['seg_logit'].squeeze(0).cpu().detach().numpy().T
+        print(seg_logit.shape)
+
     if args.predict:
         print("Loading model ..")
+        from mvpnet.models.build import build_model_mvpnet_3d
+        from mvpnet.models.build import build_model_sem_seg_2d
+
         model_config = str(
             Path.cwd() / "configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml"
         )
@@ -110,7 +144,12 @@ def main():
             exit()
 
         test_dataset = ScanNet2D3DChunksTest(
-            cache_dir=cache_dir, image_dir=image_dir, split="val", to_tensor=True, num_rgbd_frames=4
+            cache_dir=cache_dir,
+            image_dir=image_dir,
+            split="val",
+            to_tensor=True,
+            num_rgbd_frames=4,
+            all=True
         )
 
         search_id = [d for d in test_dataset.data if d["scan_id"] == args.id]
@@ -122,15 +161,19 @@ def main():
         scan_index = None
 
         for idx, dc in enumerate(test_dataset.data):
-          if dc["scan_id"] == args.id: 
-            scan_index = idx
-            print("index {} has been found".format(idx))
+            if dc["scan_id"] == args.id:
+                scan_index = idx
+                print("index {} has been found".format(idx))
 
         if scan_index is None:
-          print("scan index {} not found in dataset".format(args.id))
+            print("scan index {} not found in dataset".format(args.id))
+            exit()
 
         print("Fetch sample from dataset ..")
         input_sample = test_dataset.__getitem__(scan_index)[0]
+
+        chunk = input_sample["points"]
+        print("chunk sizing -> {} -> {}".format(chunk.size(), label.shape))
 
         print("Building model ..")
         cfg.merge_from_file(str(model_config))
@@ -140,26 +183,22 @@ def main():
 
         print("Predict ..")
 
-        scan_id = test_dataset.scan_ids[scan_index]
-        points = test_dataset.data[scan_index]['points'].astype(np.float32)
-
-        chunk_ind = input_sample.pop('chunk_ind')
-        chunk_points = input_sample['points']
-        chunk_nb_pts = chunk_points.shape[1]
-
-        if chunk_nb_pts < 2048:
-          print('Too sparse chunk in {} with {} points.'.format(scan_id, chunk_nb_pts))
-          pad = np.random.randint(chunk_nb_pts, size=2048 - chunk_nb_pts)
-          choice = np.hstack([np.arange(chunk_nb_pts), pad])
-          input_sample['points'] = input_sample['points'][:, choice]
-          input_sample['knn_indices'] = input_sample['knn_indices'][choice]
-
-
         data_batch = {k: torch.tensor([v]) for k, v in input_sample.items()}
         data_batch = {k: v.cuda(non_blocking=True) for k, v in data_batch.items()}
         predict = model(data_batch)
-        segmentation_logit = predict["seg_logit"]
-        
+        # move from CUDA to cpu
+        predict = {k: v.cpu() for k, v in data_batch.items()}
+
+        if not args.save is False:
+
+            if not Path(args.save).parent.exists():
+                print("saving path {} is invalid !".format(args.save))
+                exit()
+
+            with open(args.save, "wb") as handle:
+                pickle.dump(predict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+                print("output saved into {}".format(args.save))
+
 
 if __name__ == "__main__":
     main()

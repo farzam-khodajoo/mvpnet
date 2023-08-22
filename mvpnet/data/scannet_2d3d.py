@@ -73,6 +73,7 @@ class ScanNet2D3DChunks(Dataset):
                  flip=0.0,
                  color_jitter=None,
                  to_tensor=False,
+                 all=False
                  ):
         """
 
@@ -94,6 +95,8 @@ class ScanNet2D3DChunks(Dataset):
             to_tensor (bool): whether to convert to torch.Tensor
         """
         super(ScanNet2D3DChunks, self).__init__()
+
+        self.all = all
 
         # cache: pickle files containing point clouds, 3D labels and rgbd overlap
         self.cache_dir = cache_dir
@@ -346,28 +349,29 @@ class ScanNet2D3DChunks(Dataset):
         # ---------------------------------------------------------------------------- #
         # Try several times. If it fails then returns the whole scene
         flag = False
-        for _ in range(10):
-            # choose a random center (only xy)
-            center = points[np.random.randint(points.shape[0])][:2]
-            # determine region around center
-            chunk_min = center - 0.5 * self.chunk_size
-            chunk_max = center + 0.5 * self.chunk_size
+        if not self.all:
+            for _ in range(10):
+                # choose a random center (only xy)
+                center = points[np.random.randint(points.shape[0])][:2]
+                # determine region around center
+                chunk_min = center - 0.5 * self.chunk_size
+                chunk_max = center + 0.5 * self.chunk_size
 
-            # Magic numbers are referred to the original implementation.
-            # select points within the block with a margin
-            xy = points[:, :2]
-            chunk_mask = np.all(np.logical_and(xy >= (chunk_min - self.chunk_margin),
-                                               xy <= (chunk_max + self.chunk_margin)),
-                                axis=1)
-            # actual points and seg labels as determined above
-            chunk_points = points[chunk_mask, :]
-            chunk_seg_label = seg_label[chunk_mask]
-            # continue if no points are found
-            if len(chunk_seg_label) == 0:
-                continue
-            if np.mean(chunk_seg_label >= 0) >= self.chunk_thresh:
-                flag = True
-                break
+                # Magic numbers are referred to the original implementation.
+                # select points within the block with a margin
+                xy = points[:, :2]
+                chunk_mask = np.all(np.logical_and(xy >= (chunk_min - self.chunk_margin),
+                                                xy <= (chunk_max + self.chunk_margin)),
+                                    axis=1)
+                # actual points and seg labels as determined above
+                chunk_points = points[chunk_mask, :]
+                chunk_seg_label = seg_label[chunk_mask]
+                # continue if no points are found
+                if len(chunk_seg_label) == 0:
+                    continue
+                if np.mean(chunk_seg_label >= 0) >= self.chunk_thresh:
+                    flag = True
+                    break
 
         if not flag:
             chunk_min = np.min(points[:, :2], axis=0)
