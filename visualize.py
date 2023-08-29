@@ -149,6 +149,8 @@ def main():
             split="val",
             to_tensor=True,
             num_rgbd_frames=4,
+            chunk_size=(2, 2),
+            chunk_margin=(10, 10),
         )
 
         search_id = [d for d in test_dataset.data if d["scan_id"] == args.id]
@@ -169,9 +171,11 @@ def main():
             exit()
 
         print("Fetch sample from dataset ..")
-        input_sample = test_dataset.__getitem__(scan_index)[0]
+        input_sample = test_dataset.__getitem__(scan_index)
+        input_sample = input_sample[0]
         chunk_ind = input_sample.pop('chunk_ind')
-        print(chunk_ind)
+
+        print(input_sample.keys())
 
         if args.predict:
             print("Loading model ..")

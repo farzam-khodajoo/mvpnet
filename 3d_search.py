@@ -1,9 +1,11 @@
 from typing import List
 import argparse
+import pickle
 from pathlib import Path
 from glob import glob
 from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 from mvpnet.utils.o3d_util import draw_point_cloud
+from mvpnet.data.scannet_2d3d import ScanNet2D3DChunks
 
 import open3d as o3d
 import numpy as np
@@ -37,6 +39,36 @@ def get_scenes():
     scene_dir = Path(SCANNET_DIRECTORY)
     scan_ids = read_ids()
     return [scene_dir / scanid for scanid in scan_ids]
+
+
+def load_model(config):
+    print("[Info] Loading model")
+    from mvpnet.models.build import build_model_mvpnet_3d
+
+    model, *_ = build_model_mvpnet_3d(config)
+    return model.cuda()
+
+
+def load_cache(path):
+    if not Path(path).exists():
+        raise_path_error("cache file", path)
+
+    with open(path, "rb") as cache:
+        print("[Info] Loading cache file")
+        cache_data = pickle.load(cache)
+        return cache_data
+
+
+def search_scanid(cache_data, scanid):
+    id_query = [d for d in cache_data if d["scan_id"] == scanid]
+    if len(id_query) == 0:
+        raise_path_error("query scan id", scanid)
+
+    return id_query[0]
+
+
+def load_input_batch(scanid):
+    pass
 
 
 def read_pc_from_ply(filename, return_color=False, return_label=False):
@@ -73,26 +105,39 @@ def unproject(k, depth_map, mask=None):
     points_3d_xyz = (np.linalg.inv(k[:3, :3]).dot(uv1_points.T) * depth).T
     return points_3d_xyz
 
+
 def create_bounding_box(pts):
     # Get the minimum and maximum coordinates of the point cloud
     min_bound, max_bound = pts.get_min_bound(), pts.get_max_bound()
 
-
     # Define the bounding box corners
-    corners = np.array([
-        [min_bound[0], min_bound[1], min_bound[2]],
-        [min_bound[0], min_bound[1], max_bound[2]],
-        [min_bound[0], max_bound[1], min_bound[2]],
-        [min_bound[0], max_bound[1], max_bound[2]],
-        [max_bound[0], min_bound[1], min_bound[2]],
-        [max_bound[0], min_bound[1], max_bound[2]],
-        [max_bound[0], max_bound[1], min_bound[2]],
-        [max_bound[0], max_bound[1], max_bound[2]]
-    ])
+    corners = np.array(
+        [
+            [min_bound[0], min_bound[1], min_bound[2]],
+            [min_bound[0], min_bound[1], max_bound[2]],
+            [min_bound[0], max_bound[1], min_bound[2]],
+            [min_bound[0], max_bound[1], max_bound[2]],
+            [max_bound[0], min_bound[1], min_bound[2]],
+            [max_bound[0], min_bound[1], max_bound[2]],
+            [max_bound[0], max_bound[1], min_bound[2]],
+            [max_bound[0], max_bound[1], max_bound[2]],
+        ]
+    )
 
     # Create a line set to represent the bounding box
     lines = [
-        [0, 1], [0, 2], [0, 4], [1, 3], [1, 5], [2, 3], [2, 6], [3, 7], [4, 5], [4, 6], [5, 7], [6, 7]
+        [0, 1],
+        [0, 2],
+        [0, 4],
+        [1, 3],
+        [1, 5],
+        [2, 3],
+        [2, 6],
+        [3, 7],
+        [4, 5],
+        [4, 6],
+        [5, 7],
+        [6, 7],
     ]
 
     line_set = o3d.geometry.LineSet()
@@ -100,8 +145,11 @@ def create_bounding_box(pts):
     line_set.lines = o3d.utility.Vector2iVector(lines)
 
     # Set line colors (optional)
-    line_set.colors = o3d.utility.Vector3dVector(np.array([[1, 0, 0] for _ in range(len(lines))]))
+    line_set.colors = o3d.utility.Vector3dVector(
+        np.array([[1, 0, 0] for _ in range(len(lines))])
+    )
     return line_set
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -111,6 +159,19 @@ def main():
         type=str,
         required=True,
         help="sample which should be searched on dataset",
+    )
+    parser.add_argument(
+        "--mvpnet",
+        action="store_true",
+        default=False,
+        help="using mvpnet for fusion segmentation",
+    )
+    parser.add_argument(
+        "--pickle",
+        type=str,
+        required=False,
+        default=False,
+        help="path to cache .pickle file",
     )
     parser.add_argument(
         "--report",
@@ -132,7 +193,7 @@ def main():
     if args.report:
         scene_ply = glob(str(save_dir / "*.ply"))
         bbox = glob(str(save_dir / "*.npy"))
-        
+
         if len(scene_ply) < 1:
             raise_path_error("report folder's .ply")
 
@@ -148,7 +209,6 @@ def main():
         print("[Info] Loading scene")
         o3d.visualization.draw_geometries([bbox, pts_vis], height=500, width=500)
         exit()
-
 
     # check color sample
     sample_color_glob = glob(str(target_dir / "*.jpg"))
@@ -194,21 +254,37 @@ def main():
         pts_vis = draw_point_cloud(pc["points"])
 
         # load image
-        color = Image.open(sample_color)
-        color = np.array(color)
+        color_image = Image.open(sample_color)
+        color = np.array(color_image)
 
         # loading instrinsic data
         cam_matrix = np.loadtxt(sample_intrinsic_depth, dtype=np.float32)
 
         # load depth image
-        depth = Image.open(sample_depth)
-        depth = np.asarray(depth, dtype=np.float32) / DEPTH_SCALE_FACTOR
+        depth_image = Image.open(sample_depth)
+        depth = np.asarray(depth_image, dtype=np.float32) / DEPTH_SCALE_FACTOR
 
         # load pose data
         pose = np.loadtxt(sample_pose)
 
         # unporoject 2D to 3D
         unproj_pts = unproject(cam_matrix, depth)
+        print("proj: ", unproj_pts.shape)
+
+        #NOTE
+        if args.mvpnet:
+            from custome_sampler import get_input_batch_sample
+            data = get_input_batch_sample(
+                points=unproj_pts,
+                color=color_image,
+                depth=depth_image,
+                pose=pose,
+                cam_matrix=cam_matrix
+            )
+            print(data.keys())
+            exit()
+        #NOTE
+
         unproj_pts = pose[:3, :3].dot(unproj_pts[:, :3].T).T + pose[:3, 3]
         unproj_pts_vis = draw_point_cloud(unproj_pts)
 
@@ -225,23 +301,27 @@ def main():
 
         # check if any overlap have been found
         if True in np.unique(overlaps):
-
             # Define ICP parameters
             threshold = 0.02  # Maximum correspondence point-pair distance
             trans_init = np.identity(4)  # Initial transformation (identity matrix)
             max_iter = 1000  # Maximum number of ICP iterations
-            overlap_base_pts_vis = draw_point_cloud(np.asarray(pts_vis.points)[overlaps[:]])
-
-
-            reg_p2p = o3d.registration.registration_icp(
-                unproj_pts_vis, overlap_base_pts_vis, threshold, trans_init,
-                o3d.registration.TransformationEstimationPointToPoint(),
-                o3d.registration.ICPConvergenceCriteria(max_iteration=max_iter)
+            overlap_base_pts_vis = draw_point_cloud(
+                np.asarray(pts_vis.points)[overlaps[:]]
             )
 
+            reg_p2p = o3d.registration.registration_icp(
+                unproj_pts_vis,
+                overlap_base_pts_vis,
+                threshold,
+                trans_init,
+                o3d.registration.TransformationEstimationPointToPoint(),
+                o3d.registration.ICPConvergenceCriteria(max_iteration=max_iter),
+            )
 
             alignment_error = reg_p2p.inlier_rmse
-            knn_distances.update({alignment_error: {"overlap": overlaps, "id": sample_id}})
+            knn_distances.update(
+                {alignment_error: {"overlap": overlaps, "id": sample_id}}
+            )
 
     if len(knn_distances) < 1:
         print("[Info] No similarity have been found.")
@@ -253,17 +333,26 @@ def main():
     nearest_result = knn_distances[min_distance]
     result_scan_id = nearest_result["id"]
     result_overlap = nearest_result["overlap"]
-    scene = Path(ROOT_DIRECTORY) / "scans" / result_scan_id / "{}_vh_clean_2.ply".format(result_scan_id)
-    scene_ply= read_pc_from_ply(scene)
+    scene = (
+        Path(ROOT_DIRECTORY)
+        / "scans"
+        / result_scan_id
+        / "{}_vh_clean_2.ply".format(result_scan_id)
+    )
+    scene_ply = read_pc_from_ply(scene)
     scene_point_cloud = draw_point_cloud(scene_ply["points"])
-    overlap_point_cloud = draw_point_cloud(np.asarray(scene_point_cloud.points)[result_overlap[:]])
+    overlap_point_cloud = draw_point_cloud(
+        np.asarray(scene_point_cloud.points)[result_overlap[:]]
+    )
 
     bbox = create_bounding_box(overlap_point_cloud)
     print("[Info] result shown from scene {}".format(result_scan_id))
     o3d.visualization.draw_geometries([bbox, scene_point_cloud], height=500, width=500)
 
     print("[Info] Writing into {}".format(save_dir))
-    o3d.io.write_point_cloud(str(save_dir / "{}.ply".format(result_scan_id)), scene_point_cloud)
+    o3d.io.write_point_cloud(
+        str(save_dir / "{}.ply".format(result_scan_id)), scene_point_cloud
+    )
     np.save(save_dir / "{}_lines".format(result_scan_id), result_overlap)
 
 
