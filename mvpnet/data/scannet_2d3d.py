@@ -100,6 +100,8 @@ class ScanNet2D3DChunks(Dataset):
         # includes color, depth, 2D label
         self.image_dir = image_dir
 
+        self.avoid_chunking = False
+
         # load split
         self.split = split
         with open(osp.join(self.split_dir, self.split_map[split]), 'r') as f:
@@ -347,7 +349,6 @@ class ScanNet2D3DChunks(Dataset):
         # Try several times. If it fails then returns the whole scene
         flag = False
         for _ in range(10):
-            break # avoid this loop
             # choose a random center (only xy)
             center = points[np.random.randint(points.shape[0])][:2]
             # determine region around center
