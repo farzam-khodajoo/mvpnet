@@ -98,7 +98,7 @@ def test(cfg, args, output_dir='', run_name=''):
     test_dataloader = DataLoader(test_dataset,
                                  batch_size=1,
                                  shuffle=False,
-                                 num_workers=4,
+                                 num_workers=0,
                                  collate_fn=lambda x: x[0])
 
     # evaluator
