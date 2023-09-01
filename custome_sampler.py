@@ -148,13 +148,12 @@ def get_rgbd_data(
     image_xyz = np.matmul(image_xyz, pose[:3, :3].T) + pose[:3, 3]
 
     if not np.any(image_mask):
-        print("Invalid depth map")
+        logging.warning("Invalid depth map ! (inf)")
 
     image_xyz_list.append(image_xyz)
     image_mask_list.append(image_mask)
 
     # post-process, especially for horizontal flip
-    print("length of image_list: {}".format(len(image_list)))
     image_ind_list = []
     for i in range(num_rgbd_frames):
         h, w, _ = image_list[i].shape
@@ -212,6 +211,7 @@ def get_input_batch_sample(
     chunk_thresh=1000,
     chunk_stride=0.5,
     chunk_margin=(10, 10),
+    depth_scale_factor=1000.0
 ):
     nb_pts=-1    
     num_rgbd_frames = 1
@@ -225,10 +225,6 @@ def get_input_batch_sample(
         return_bbox=True,
     )
 
-    print("\n \n indices:: ", len(chunk_indices))
-
-    print("\nsize of projection: ", round(getsizeof(points) / 1024 / 1024,2), "MB")
-
     out_dict = {
         "points": points
     }
@@ -239,7 +235,8 @@ def get_input_batch_sample(
         sample_depth=depth,
         sample_pose=pose,
         cam_matrix=cam_matrix,
-        num_rgbd_frames=num_rgbd_frames
+        num_rgbd_frames=num_rgbd_frames,
+        depth_scale_factor=depth_scale_factor
     )
 
     out_dict.update(out_dict_rgbd)
@@ -248,10 +245,10 @@ def get_input_batch_sample(
     # to_tensor
     points = points.T  # (3, nc)
     if "images" in out_dict:
-        print("tensoring images..")
         out_dict["images"] = np.moveaxis(
             out_dict["images"], -1, 1
         )  # (nv, 3, h, w)
 
+    out_dict["points"] = points
 
     return out_dict

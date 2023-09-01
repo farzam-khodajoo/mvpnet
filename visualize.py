@@ -176,6 +176,11 @@ def main():
         chunk_ind = input_sample.pop('chunk_ind')
 
         print(input_sample.keys())
+        print(input_sample["points"].shape)
+        print(input_sample["images"].shape)
+        print(input_sample["image_xyz"].shape)
+        print(input_sample["image_mask"].shape)
+        print(input_sample["knn_indices"].shape)
 
         if args.predict:
             print("Loading model ..")

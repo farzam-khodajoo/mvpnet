@@ -1,11 +1,17 @@
+import logging
 from typing import List
 import argparse
 import pickle
+import torch
 from pathlib import Path
 from glob import glob
 from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 from mvpnet.utils.o3d_util import draw_point_cloud
 from mvpnet.data.scannet_2d3d import ScanNet2D3DChunks
+from common.utils.checkpoint import CheckpointerV2
+from mvpnet.config.mvpnet_3d import cfg
+from custome_sampler import get_input_batch_sample
+
 
 import open3d as o3d
 import numpy as np
@@ -18,11 +24,21 @@ from tqdm import tqdm
 
 DEPTH_SCALE_FACTOR = 50.0
 
+logging.basicConfig(level=logging.INFO)
+
 
 def raise_path_error(title, path=""):
-    print("[Error] {} {} does not exists.".format(title, path))
+    logging.error("{} {}".format(title, path))
     exit()
 
+
+def load_from_pickle(path: str):
+    with open(path, "rb") as handle:
+        return pickle.load(handle)
+
+def save_into_pickle(object, path: str):
+    with open(path, "wb") as handle:
+        pickle.dump(object, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 def read_ids():
     scannet_3d_dir = Path(SCANNET_DIRECTORY)
@@ -42,12 +58,44 @@ def get_scenes():
 
 
 def load_model(config):
-    print("[Info] Loading model")
+    # the reason this dependencies are imported right here
+    # is that model side requires compile CUDA libraries
+    # which is impossible on non-nvidia device
+    # so we import only when model is required
     from mvpnet.models.build import build_model_mvpnet_3d
 
-    model, *_ = build_model_mvpnet_3d(config)
-    return model.cuda()
+    cfg.merge_from_file(str(config))
+    model = build_model_mvpnet_3d(cfg)[0]
+    model = model.cuda()
+    model.eval()
 
+    return model
+
+def load_from_checkpoint(model):
+    checkpointer = CheckpointerV2(model, save_dir=output_dir, logger=logger)
+
+def get_prediction_labels(predict):
+    seg_logit = predict["seg_logit"].squeeze(0).cpu().detach().numpy().T
+    seg_labels = np.argmax(seg_logit, axis=1)
+
+    return seg_labels
+
+
+def predict_segmentation(model, data_batch: dict):
+    # convert numpy into torch.tensor
+    data_batch = {k: torch.tensor([v]) for k, v in data_batch.items()}
+    # send to CUDA memory
+    data_batch = {k: v.cuda(non_blocking=True) for k, v in data_batch.items()}
+
+    predict = model(data_batch)
+    # send back to CPU
+    predict = {k: v.cpu() for k, v in predict.items()}
+
+    return get_prediction_labels(predict)
+
+def get_prediction_segmentation_from_pickle(path):
+    predict = load_from_pickle(path)
+    return get_prediction_labels(predict=predict)
 
 def load_cache(path):
     if not Path(path).exists():
@@ -65,10 +113,6 @@ def search_scanid(cache_data, scanid):
         raise_path_error("query scan id", scanid)
 
     return id_query[0]
-
-
-def load_input_batch(scanid):
-    pass
 
 
 def read_pc_from_ply(filename, return_color=False, return_label=False):
@@ -170,8 +214,22 @@ def main():
         "--pickle",
         type=str,
         required=False,
-        default=False,
+        default=None,
         help="path to cache .pickle file",
+    )
+    parser.add_argument(
+        "--save-segmentation-as-pickle",
+        type=str,
+        required=False,
+        default=None,
+        help="save model logit into pickle",
+    )
+    parser.add_argument(
+        "--compare-mvpnet-labels",
+        action="store_true",
+        required=False,
+        default=None,
+        help="log difference between predicted labels and real one",
     )
     parser.add_argument(
         "--report",
@@ -206,7 +264,7 @@ def main():
         bbox = np.load(bbox[0])
         overlap_point_cloud = draw_point_cloud(np.asarray(pts_vis.points)[bbox[:]])
         bbox = create_bounding_box(overlap_point_cloud)
-        print("[Info] Loading scene")
+        logging.info("Loading scene")
         o3d.visualization.draw_geometries([bbox, pts_vis], height=500, width=500)
         exit()
 
@@ -228,8 +286,10 @@ def main():
     depth_sample_id = Path(sample_depth).name.split(".png")[0]
 
     if color_sample_id != depth_sample_id:
-        print("color.jpg id and depth.jpg id mismatch !")
-        print("color: {} --- depth: {}".format(color_sample_id, depth_sample_id))
+        logging.error("color.jpg id and depth.jpg id mismatch !")
+        logging.error(
+            "color: {} --- depth: {}".format(color_sample_id, depth_sample_id)
+        )
         exit()
 
     sample_pose = target_dir / "{}.txt".format(depth_sample_id)
@@ -240,9 +300,98 @@ def main():
     if not sample_intrinsic_depth.exists():
         raise_path_error("intrinsic file", sample_intrinsic_depth)
 
+    # load image
+    color_image = Image.open(sample_color)
+    color = np.array(color_image)
+
+    # loading instrinsic data
+    cam_matrix = np.loadtxt(sample_intrinsic_depth, dtype=np.float32)
+
+    # load depth image
+    depth_image = Image.open(sample_depth)
+    depth = np.asarray(depth_image, dtype=np.float32) / DEPTH_SCALE_FACTOR
+
+    # load pose data
+    pose = np.loadtxt(sample_pose)
+
+    # unporoject 2D to 3D
+    unproj_pts = unproject(cam_matrix, depth)
+    unproj_pts = pose[:3, :3].dot(unproj_pts[:, :3].T).T + pose[:3, 3]
+
+    logging.info("project cloud shape: {}".format(unproj_pts.shape))
+
+    if args.mvpnet:
+        # check if config file exists
+        model_config = (
+            Path.cwd() / "configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml"
+        )
+        if not model_config.exists():
+            raise_path_error("pn2ssg config file", model_config)
+
+        # pre-process data
+        logging.info("Loading batch sample")
+        data = get_input_batch_sample(
+            points=unproj_pts,
+            color=color_image,
+            depth=depth_image,
+            pose=pose,
+            cam_matrix=cam_matrix,
+            depth_scale_factor=1000.0
+        )
+
+        if args.pickle is not None:
+            logging.info("Loading segmentation from pickle")
+            segmentation = get_prediction_segmentation_from_pickle(args.pickle)
+
+        else:
+            logging.info("Loading model")
+            model = load_model(config=model_config)
+
+            logging.info("Loading weights")
+            output_directory = (
+               Path.cwd() / "outputs/scannet/mvpnet_3d_unet_resnet34_pn2ssg"
+            )
+
+            if not output_directory.exists() or not output_directory.is_dir():
+                logging.error("model checkpoint direcotry {} does not exists".format(output_directory))
+                exit()
+
+            checkpointer = CheckpointerV2(model, save_dir=output_directory)
+            checkpointer.load(output_directory, resume=False)
+
+            logging.info("Processing segmentation")
+            segmentation = predict_segmentation(model=model, data_batch=data)
+
+        # save model output into pickle
+        if args.save_segmentation_as_pickle is not None:
+            if args.pickle is not None:
+                logging.error("avoid re-saving pickle")
+                exit()
+
+            logging.info("Save segmentation output into {}".format(args.save_segmentation_as_pickle))
+            save_into_pickle(segmentation, args.save_segmentation_as_pickle)            
+
+        # pop window and show differne between prediction and labels
+        if args.compare_mvpnet_labels is not None:
+            labels = Path(args.target) / "addition" / "{}.png".format(depth_sample_id)
+            if not labels.exists():
+                raise_path_error("label file", labels)
+
+            #NOTE
+            # write this.
+
+
+        print()
+        print(np.unique(segmentation.flatten()))
+        print(len(np.unique(segmentation.flatten())))
+
+        print(segmentation.shape)
+        exit()
+
+    logging.info("Searching scenes")
+    # container for knn distance results
     knn_distances = {}
 
-    print("[Info] Searching scenes")
     for scene in tqdm(get_scenes()):
         # check if folder exists
         if not scene.exists():
@@ -253,45 +402,12 @@ def main():
         pc = read_pc_from_ply(sample_ply_scene_path, return_color=True)
         pts_vis = draw_point_cloud(pc["points"])
 
-        # load image
-        color_image = Image.open(sample_color)
-        color = np.array(color_image)
-
-        # loading instrinsic data
-        cam_matrix = np.loadtxt(sample_intrinsic_depth, dtype=np.float32)
-
-        # load depth image
-        depth_image = Image.open(sample_depth)
-        depth = np.asarray(depth_image, dtype=np.float32) / DEPTH_SCALE_FACTOR
-
-        # load pose data
-        pose = np.loadtxt(sample_pose)
-
-        # unporoject 2D to 3D
-        unproj_pts = unproject(cam_matrix, depth)
-        print("proj: ", unproj_pts.shape)
-
-        #NOTE
-        if args.mvpnet:
-            from custome_sampler import get_input_batch_sample
-            data = get_input_batch_sample(
-                points=unproj_pts,
-                color=color_image,
-                depth=depth_image,
-                pose=pose,
-                cam_matrix=cam_matrix
-            )
-            print(data.keys())
-            exit()
-        #NOTE
-
-        unproj_pts = pose[:3, :3].dot(unproj_pts[:, :3].T).T + pose[:3, 3]
         unproj_pts_vis = draw_point_cloud(unproj_pts)
 
         pcd_tree = o3d.geometry.KDTreeFlann(pts_vis)
         overlaps = np.zeros([len(np.asarray(pts_vis.points))], dtype=bool)
 
-        for idx in range(len(unproj_pts)):
+        for idx in tqdm(range(len(unproj_pts))):
             # find a neighbor that is at most 1cm away
             found, idx_point, dist = pcd_tree.search_hybrid_vector_3d(
                 unproj_pts[idx, :3], 0.5, 1
@@ -324,9 +440,9 @@ def main():
             )
 
     if len(knn_distances) < 1:
-        print("[Info] No similarity have been found.")
+        logging.warning("No similarity have been found.")
 
-    print("[Info] Sorting results")
+    logging.info("Sorting results")
     query_distances = [dis for dis in knn_distances.keys()]
     min_distance = min(query_distances)
 
@@ -346,10 +462,10 @@ def main():
     )
 
     bbox = create_bounding_box(overlap_point_cloud)
-    print("[Info] result shown from scene {}".format(result_scan_id))
+    logging.info("Result shown from scene {}".format(result_scan_id))
     o3d.visualization.draw_geometries([bbox, scene_point_cloud], height=500, width=500)
 
-    print("[Info] Writing into {}".format(save_dir))
+    logging.info("Writing into {}".format(save_dir))
     o3d.io.write_point_cloud(
         str(save_dir / "{}.ply".format(result_scan_id)), scene_point_cloud
     )
