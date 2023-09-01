@@ -129,6 +129,7 @@ def get_rgbd_data(
     # resize
     if resize:
         if not image.size == resize:
+            logging.info("Resize images..")
             # check if we do not enlarge downsized images
             assert image.size[0] > resize[0] and image.size[1] > resize[1]
             image = image.resize(resize, Image.BILINEAR)

@@ -36,9 +36,11 @@ def load_from_pickle(path: str):
     with open(path, "rb") as handle:
         return pickle.load(handle)
 
+
 def save_into_pickle(object, path: str):
     with open(path, "wb") as handle:
         pickle.dump(object, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 
 def read_ids():
     scannet_3d_dir = Path(SCANNET_DIRECTORY)
@@ -71,14 +73,11 @@ def load_model(config):
 
     return model
 
-def load_from_checkpoint(model):
-    checkpointer = CheckpointerV2(model, save_dir=output_dir, logger=logger)
 
 def get_prediction_labels(predict):
     seg_logit = predict["seg_logit"].squeeze(0).cpu().detach().numpy().T
-    seg_labels = np.argmax(seg_logit, axis=1)
 
-    return seg_labels
+    return seg_logit
 
 
 def predict_segmentation(model, data_batch: dict):
@@ -93,9 +92,11 @@ def predict_segmentation(model, data_batch: dict):
 
     return get_prediction_labels(predict)
 
+
 def get_prediction_segmentation_from_pickle(path):
-    predict = load_from_pickle(path)
-    return get_prediction_labels(predict=predict)
+    logits = load_from_pickle(path)
+    return logits
+
 
 def load_cache(path):
     if not Path(path).exists():
@@ -336,7 +337,7 @@ def main():
             depth=depth_image,
             pose=pose,
             cam_matrix=cam_matrix,
-            depth_scale_factor=1000.0
+            depth_scale_factor=1000.0,
         )
 
         if args.pickle is not None:
@@ -349,15 +350,24 @@ def main():
 
             logging.info("Loading weights")
             output_directory = (
-               Path.cwd() / "outputs/scannet/mvpnet_3d_unet_resnet34_pn2ssg"
+                Path.cwd() / "outputs/scannet/mvpnet_3d_unet_resnet34_pn2ssg"
             )
 
             if not output_directory.exists() or not output_directory.is_dir():
-                logging.error("model checkpoint direcotry {} does not exists".format(output_directory))
+                logging.error(
+                    "model checkpoint direcotry {} does not exists".format(
+                        output_directory
+                    )
+                )
                 exit()
 
+            logging.info("Loading weights from checkpointer")
             checkpointer = CheckpointerV2(model, save_dir=output_directory)
-            checkpointer.load(output_directory, resume=False)
+            if not checkpointer.has_checkpoint():
+                logging.error("No checkpoint has been found")
+
+            # this will resume and load last checkpoint
+            checkpointer.load(None, resume=True)
 
             logging.info("Processing segmentation")
             segmentation = predict_segmentation(model=model, data_batch=data)
@@ -368,8 +378,12 @@ def main():
                 logging.error("avoid re-saving pickle")
                 exit()
 
-            logging.info("Save segmentation output into {}".format(args.save_segmentation_as_pickle))
-            save_into_pickle(segmentation, args.save_segmentation_as_pickle)            
+            logging.info(
+                "Save segmentation output into {}".format(
+                    args.save_segmentation_as_pickle
+                )
+            )
+            save_into_pickle(segmentation, args.save_segmentation_as_pickle)
 
         # pop window and show differne between prediction and labels
         if args.compare_mvpnet_labels is not None:
@@ -377,11 +391,9 @@ def main():
             if not labels.exists():
                 raise_path_error("label file", labels)
 
-            #NOTE
+            # NOTE
             # write this.
 
-
-        print()
         print(np.unique(segmentation.flatten()))
         print(len(np.unique(segmentation.flatten())))
 

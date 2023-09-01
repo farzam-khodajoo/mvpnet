@@ -70,6 +70,7 @@ class Checkpointer(object):
         if isinstance(self.model, (DataParallel, DistributedDataParallel)):
             self.model.module.load_state_dict(checkpoint.pop('model'))
         else:
+            logging.info("Loading model state dictionary")
             self.model.load_state_dict(checkpoint.pop('model'))
         if resume_states:
             if 'optimizer' in checkpoint and self.optimizer:

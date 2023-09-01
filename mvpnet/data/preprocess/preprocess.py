@@ -129,7 +129,6 @@ def compute_rgbd_knn(frame_ids, cam_matrix, paths, whole_scene_pts,
     overlaps = np.zeros([len(base_point_ind), len(frame_ids)], dtype=bool)
 
     # visualize base points
-    print("checking debug")
     if _DEBUG:
         print("debugging..")
         from mvpnet.utils.o3d_util import draw_point_cloud
