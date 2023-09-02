@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import logging
 from typing import List
 import argparse
@@ -57,6 +58,15 @@ def get_scenes():
     scene_dir = Path(SCANNET_DIRECTORY)
     scan_ids = read_ids()
     return [scene_dir / scanid for scanid in scan_ids]
+
+
+def load_class_mapping(filename):
+    id_to_class = OrderedDict()
+    with open(filename, 'r') as f:
+        for line in f.readlines():
+            class_id, class_name = line.rstrip().split('\t')
+            id_to_class[int(class_id)] = class_name
+    return id_to_class
 
 
 def load_model(config):
@@ -340,6 +350,14 @@ def main():
             depth_scale_factor=1000.0,
         )
 
+        all_class_ids = Path.cwd() / "mvpnet/data/meta_files/labelids.txt"
+        if not all_class_ids.exists():
+            raise_path_error("file", all_class_ids)
+
+        label_mapping = load_class_mapping(all_class_ids)
+        label_map_ids = [id_ for id_, classname in label_mapping.items()]
+        label_map_names = [classname for id_, classname in label_mapping.items()]
+
         if args.pickle is not None:
             logging.info("Loading segmentation from pickle")
             segmentation = get_prediction_segmentation_from_pickle(args.pickle)
@@ -391,13 +409,40 @@ def main():
             if not labels.exists():
                 raise_path_error("label file", labels)
 
-            # NOTE
-            # write this.
+            # load labeled image and segment with only valid labels
+            label_image = Image.open(labels)
+            label_np = np.asarray(label_image)
 
-        print(np.unique(segmentation.flatten()))
-        print(len(np.unique(segmentation.flatten())))
+            labels_in_image = np.unique(label_np)
+            invalid_ids = list(filter(lambda idx: not idx in label_map_ids, list(labels_in_image)))
 
-        print(segmentation.shape)
+            if len(invalid_ids) > 0:
+                logging.warning("Found invalid ids: {}".format(invalid_ids))            
+
+            logging.warning("Excluding invalid ids..")
+            non_valid_mask = np.isin(label_np, invalid_ids)
+            valid_2d_label = np.where(non_valid_mask, -100, label_np)
+
+            logging.info("Plotting label images")
+            plt.figure(figsize=(7, 4))
+            # label image including invalid images
+            plt.subplot(121)
+            plt.imshow(label_np)
+            plt.title("Original")
+
+            plt.subplot(122)
+            plt.imshow(valid_2d_label)
+            plt.title("Valid only (exclude -100)")
+
+            plt.tight_layout()
+            plt.show()
+        
+
+        scene_predicted_labels = np.argmax(segmentation, axis=1)
+        predicted_labels = np.unique(scene_predicted_labels)
+        predicted_classnames = [label_map_names[int(idx)] for idx in predicted_labels]
+
+        logging.info("Labels found in prediction: {}".format(predicted_classnames))
         exit()
 
     logging.info("Searching scenes")
