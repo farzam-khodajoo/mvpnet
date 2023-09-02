@@ -1,4 +1,6 @@
 from collections import OrderedDict
+import os.path as osp
+import csv
 import logging
 from typing import List
 import argparse
@@ -8,11 +10,11 @@ from pathlib import Path
 from glob import glob
 from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 from mvpnet.utils.o3d_util import draw_point_cloud
+from mvpnet.utils.visualize import label2color
 from mvpnet.data.scannet_2d3d import ScanNet2D3DChunks
 from common.utils.checkpoint import CheckpointerV2
 from mvpnet.config.mvpnet_3d import cfg
 from custome_sampler import get_input_batch_sample
-
 
 import open3d as o3d
 import numpy as np
@@ -23,7 +25,7 @@ from PIL import Image
 from tqdm import tqdm
 
 
-DEPTH_SCALE_FACTOR = 50.0
+DEPTH_SCALE_FACTOR = 100.0
 
 logging.basicConfig(level=logging.INFO)
 
@@ -62,11 +64,27 @@ def get_scenes():
 
 def load_class_mapping(filename):
     id_to_class = OrderedDict()
-    with open(filename, 'r') as f:
+    with open(filename, "r") as f:
         for line in f.readlines():
-            class_id, class_name = line.rstrip().split('\t')
+            class_id, class_name = line.rstrip().split("\t")
             id_to_class[int(class_id)] = class_name
     return id_to_class
+
+
+def read_label_mapping(
+    filename, label_from="raw_category", label_to="nyu40id", as_int=False
+):
+    """Read the mapping of labels from the given tsv"""
+    assert osp.isfile(filename)
+    mapping = dict()
+    with open(filename) as csvfile:
+        reader = csv.DictReader(csvfile, delimiter="\t")
+        for row in reader:
+            key = row[label_from]
+            if as_int:
+                key = int(key)
+            mapping[key] = int(row[label_to])
+    return mapping
 
 
 def load_model(config):
@@ -229,6 +247,13 @@ def main():
         help="path to cache .pickle file",
     )
     parser.add_argument(
+        "--label",
+        type=str,
+        required=False,
+        default=None,
+        help="label to be segmented from mvpnet",
+    )
+    parser.add_argument(
         "--save-segmentation-as-pickle",
         type=str,
         required=False,
@@ -241,6 +266,13 @@ def main():
         required=False,
         default=None,
         help="log difference between predicted labels and real one",
+    )
+    parser.add_argument(
+        "--no-search",
+        action="store_true",
+        required=False,
+        default=None,
+        help="avoid searching 3D search",
     )
     parser.add_argument(
         "--report",
@@ -328,6 +360,7 @@ def main():
     # unporoject 2D to 3D
     unproj_pts = unproject(cam_matrix, depth)
     unproj_pts = pose[:3, :3].dot(unproj_pts[:, :3].T).T + pose[:3, 3]
+    masked_unproj_pts = None
 
     logging.info("project cloud shape: {}".format(unproj_pts.shape))
 
@@ -350,13 +383,36 @@ def main():
             depth_scale_factor=1000.0,
         )
 
+        # create label mapping
         all_class_ids = Path.cwd() / "mvpnet/data/meta_files/labelids.txt"
         if not all_class_ids.exists():
             raise_path_error("file", all_class_ids)
 
+        labels_combined_path = (
+            Path.cwd() / "mvpnet/data/meta_files/scannetv2-labels.combined.tsv"
+        )
+        if not labels_combined_path.exists():
+            raise_path_error("file", labels_combined_path)
+
+        raw_to_nyu40_mapping = read_label_mapping(labels_combined_path,
+                                                       label_from='id', label_to='nyu40id', as_int=True)
+
+        raw_to_nyu40 = np.zeros(max(raw_to_nyu40_mapping.keys()) + 1, dtype=np.int64)  
+
+        for key, value in raw_to_nyu40_mapping.items():
+            raw_to_nyu40[key] = value
+
         label_mapping = load_class_mapping(all_class_ids)
+        assert len(label_mapping) == 20
+        nyu40_to_scannet = np.full(shape=41, fill_value=-100, dtype=np.int64)
+        nyu40_to_scannet[list(label_mapping.keys())] = np.arange(len(label_mapping))
+        scannet_to_nyu40 = np.array(list(label_mapping.keys()) + [0], dtype=np.int64)
+        raw_to_scannet = nyu40_to_scannet[raw_to_nyu40]
+        label_map_names = tuple(label_mapping.values())
+        print(label_map_names)
+        print(nyu40_to_scannet)
+        print(len(nyu40_to_scannet))
         label_map_ids = [id_ for id_, classname in label_mapping.items()]
-        label_map_names = [classname for id_, classname in label_mapping.items()]
 
         if args.pickle is not None:
             logging.info("Loading segmentation from pickle")
@@ -403,6 +459,13 @@ def main():
             )
             save_into_pickle(segmentation, args.save_segmentation_as_pickle)
 
+        scene_predicted_labels = np.argmax(segmentation, axis=1)
+
+        predicted_labels = np.unique(scene_predicted_labels)
+        logging.info("Label IDs found in prediction {}".format(predicted_labels))
+        predicted_classnames = [label_map_names[int(idx)] for idx in predicted_labels]
+        logging.info("Labels found in prediction: {}".format(predicted_classnames))
+
         # pop window and show differne between prediction and labels
         if args.compare_mvpnet_labels is not None:
             labels = Path(args.target) / "addition" / "{}.png".format(depth_sample_id)
@@ -411,39 +474,68 @@ def main():
 
             # load labeled image and segment with only valid labels
             label_image = Image.open(labels)
-            label_np = np.asarray(label_image)
-
-            labels_in_image = np.unique(label_np)
-            invalid_ids = list(filter(lambda idx: not idx in label_map_ids, list(labels_in_image)))
-
-            if len(invalid_ids) > 0:
-                logging.warning("Found invalid ids: {}".format(invalid_ids))            
-
-            logging.warning("Excluding invalid ids..")
-            non_valid_mask = np.isin(label_np, invalid_ids)
-            valid_2d_label = np.where(non_valid_mask, -100, label_np)
+            label_np = np.array(label_image)
+            bad_label_ind = np.logical_or(label_np < 0, label_np > 40)
+            label_np[bad_label_ind] = 0
+            segmentaion_labels = nyu40_to_scannet[label_np]
 
             logging.info("Plotting label images")
             plt.figure(figsize=(7, 4))
-            # label image including invalid images
+            #label image including invalid images
             plt.subplot(121)
             plt.imshow(label_np)
             plt.title("Original")
 
             plt.subplot(122)
-            plt.imshow(valid_2d_label)
+            plt.imshow(segmentaion_labels)
             plt.title("Valid only (exclude -100)")
 
             plt.tight_layout()
             plt.show()
-        
 
-        scene_predicted_labels = np.argmax(segmentation, axis=1)
-        predicted_labels = np.unique(scene_predicted_labels)
-        predicted_classnames = [label_map_names[int(idx)] for idx in predicted_labels]
+            mvpnet_segmented_pt = draw_point_cloud(
+                unproj_pts, label2color(scene_predicted_labels)
+            )
 
-        logging.info("Labels found in prediction: {}".format(predicted_classnames))
-        exit()
+            logging.info("Loading segmented view from mvpnet")
+            o3d.visualization.draw_geometries(
+                [mvpnet_segmented_pt], height=500, width=500
+            )
+
+        if args.label is not None:
+            try:
+                index_of_classname = label_map_names.index(args.label)
+            except ValueError:
+                logging.error(
+                    "Classname {} not found in {}".format(args.label, label_map_names)
+                )
+                exit()
+
+            logging.info(
+                "Slicing projection with mask label '{}' and index of {}".format(
+                    args.label, index_of_classname
+                )
+            )
+            choosen_label = index_of_classname
+            label_mask = np.where(scene_predicted_labels == choosen_label)
+            masked_unproj_pts = unproj_pts[label_mask]
+
+        if args.no_search:
+            logging.info("Exit program after --no-search")
+            exit()
+
+    # visualize projection before proceed search
+    logging.info("Loading pre-view of original projection")
+    unproj_pts_vis = draw_point_cloud(unproj_pts)
+    o3d.visualization.draw_geometries([unproj_pts_vis], height=500, width=500)
+
+    if masked_unproj_pts is not None:
+        logging.info("Loading pre-view of masked projection")
+        masked_unproj_pts_vis = draw_point_cloud(masked_unproj_pts)
+        o3d.visualization.draw_geometries(
+            [masked_unproj_pts_vis], height=500, width=500
+        )
+        unproj_pts = masked_unproj_pts
 
     logging.info("Searching scenes")
     # container for knn distance results
@@ -492,12 +584,14 @@ def main():
             )
 
             alignment_error = reg_p2p.inlier_rmse
+
             knn_distances.update(
                 {alignment_error: {"overlap": overlaps, "id": sample_id}}
             )
 
     if len(knn_distances) < 1:
         logging.warning("No similarity have been found.")
+        exit()
 
     logging.info("Sorting results")
     query_distances = [dis for dis in knn_distances.keys()]
@@ -507,8 +601,7 @@ def main():
     result_scan_id = nearest_result["id"]
     result_overlap = nearest_result["overlap"]
     scene = (
-        Path(ROOT_DIRECTORY)
-        / "scans"
+        Path(SCANNET_DIRECTORY)
         / result_scan_id
         / "{}_vh_clean_2.ply".format(result_scan_id)
     )
