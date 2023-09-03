@@ -36,6 +36,9 @@ def raise_path_error(title, path=""):
 
 
 def load_from_pickle(path: str):
+    if not Path(path).exists():
+        raise_path_error("pickle file", path)
+
     with open(path, "rb") as handle:
         return pickle.load(handle)
 
@@ -394,10 +397,11 @@ def main():
         if not labels_combined_path.exists():
             raise_path_error("file", labels_combined_path)
 
-        raw_to_nyu40_mapping = read_label_mapping(labels_combined_path,
-                                                       label_from='id', label_to='nyu40id', as_int=True)
+        raw_to_nyu40_mapping = read_label_mapping(
+            labels_combined_path, label_from="id", label_to="nyu40id", as_int=True
+        )
 
-        raw_to_nyu40 = np.zeros(max(raw_to_nyu40_mapping.keys()) + 1, dtype=np.int64)  
+        raw_to_nyu40 = np.zeros(max(raw_to_nyu40_mapping.keys()) + 1, dtype=np.int64)
 
         for key, value in raw_to_nyu40_mapping.items():
             raw_to_nyu40[key] = value
@@ -461,6 +465,8 @@ def main():
 
         scene_predicted_labels = np.argmax(segmentation, axis=1)
 
+        scene_prediction_nyu40 = scannet_to_nyu40[scene_predicted_labels]
+        # print(np.unique(scene_prediction_nyu40))
         predicted_labels = np.unique(scene_predicted_labels)
         logging.info("Label IDs found in prediction {}".format(predicted_labels))
         predicted_classnames = [label_map_names[int(idx)] for idx in predicted_labels]
@@ -481,7 +487,7 @@ def main():
 
             logging.info("Plotting label images")
             plt.figure(figsize=(7, 4))
-            #label image including invalid images
+            # label image including invalid images
             plt.subplot(121)
             plt.imshow(label_np)
             plt.title("Original")
@@ -504,7 +510,7 @@ def main():
 
         if args.label is not None:
             try:
-                index_of_classname = label_map_names.index(args.label)
+                index_of_classname = label_map_names.index(args.label) - 1
             except ValueError:
                 logging.error(
                     "Classname {} not found in {}".format(args.label, label_map_names)
@@ -513,7 +519,7 @@ def main():
 
             logging.info(
                 "Slicing projection with mask label '{}' and index of {}".format(
-                    args.label, index_of_classname
+                    args.label, index_of_classname + 2
                 )
             )
             choosen_label = index_of_classname
@@ -535,7 +541,9 @@ def main():
         o3d.visualization.draw_geometries(
             [masked_unproj_pts_vis], height=500, width=500
         )
+        logging.info("previous projection size: {}".format(unproj_pts.shape))
         unproj_pts = masked_unproj_pts
+        logging.info("New masked projection size: {}".format(unproj_pts.shape))
 
     logging.info("Searching scenes")
     # container for knn distance results
@@ -567,9 +575,9 @@ def main():
         # check if any overlap have been found
         if True in np.unique(overlaps):
             # Define ICP parameters
-            threshold = 0.02  # Maximum correspondence point-pair distance
+            threshold = 0.5  # Maximum correspondence point-pair distance
             trans_init = np.identity(4)  # Initial transformation (identity matrix)
-            max_iter = 1000  # Maximum number of ICP iterations
+            max_iter = 5_000  # Maximum number of ICP iterations
             overlap_base_pts_vis = draw_point_cloud(
                 np.asarray(pts_vis.points)[overlaps[:]]
             )
