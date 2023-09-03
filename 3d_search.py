@@ -608,6 +608,20 @@ def main():
     nearest_result = knn_distances[min_distance]
     result_scan_id = nearest_result["id"]
     result_overlap = nearest_result["overlap"]
+    logging.info("Found #1 first candidate {} with RMSE of {}".format(result_scan_id, min_distance))
+
+    query_distances.sort()
+    second_min_distance = query_distances
+    second_min_distance = second_min_distance[1] # [0] will be first
+
+    if query_distances[0] != min_distance:
+        logging.error("Result sorting mismatching")
+        exit()
+
+    second_nearest_result = knn_distances[second_min_distance]
+    second_scan_id = second_nearest_result["id"]
+    logging.info("Found #2 second candidate {} with RMSE of {}".format(second_scan_id, second_min_distance))
+
     scene = (
         Path(SCANNET_DIRECTORY)
         / result_scan_id

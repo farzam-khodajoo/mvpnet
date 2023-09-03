@@ -13,7 +13,7 @@ from mvpnet.config.mvpnet_3d import cfg
 
 from mvpnet.data.scannet_2d3d import ScanNet2D3DChunksTest, ScanNet2D3DChunks
 
-from SETTING import ROOT_DIRECTORY
+from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 
 RESIZE_DATASET = Path(ROOT_DIRECTORY) / "scans_resize_160x120"
 
@@ -107,7 +107,7 @@ def main():
         print("scan_id {} not found !".format(args.id))
         exit()
 
-    point_cloud_path, labeled_cloud_path = query_3d_samples(RESIZE_DATASET / args.id)
+    point_cloud_path, labeled_cloud_path = query_3d_samples(str(Path(SCANNET_DIRECTORY) / args.id))
     label_point_cloud, _, label = read_ply(labeled_cloud_path)
 
     # plot 3D space with labels
