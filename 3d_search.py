@@ -228,12 +228,13 @@ def create_bounding_box(pts):
 
 
 def main():
+    global SCANNET_DIRECTORY
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--dataset",
         type=str,
         required=False,
-        default=None,
+        default=SCANNET_DIRECTORY,
         help="path to scans/ dataset",
     )
     parser.add_argument(
@@ -638,11 +639,21 @@ def main():
     second_scan_id = second_nearest_result["id"]
     logging.info("Found #2 second candidate {} with RMSE of {}".format(second_scan_id, second_min_distance))
 
-    scene = (
-        Path(SCANNET_DIRECTORY)
-        / result_scan_id
-        / "{}_vh_clean_2.ply".format(result_scan_id)
-    )
+
+    if args.dataset is not None:
+        scene = (
+            Path(args.dataset)
+            / result_scan_id
+            / "{}_vh_clean_2.ply".format(result_scan_id)
+        )
+
+    else:
+        scene = (
+            Path(SCANNET_DIRECTORY)
+            / result_scan_id
+            / "{}_vh_clean_2.ply".format(result_scan_id)
+        )
+    
     scene_ply = read_pc_from_ply(scene)
     scene_point_cloud = draw_point_cloud(scene_ply["points"])
     overlap_point_cloud = draw_point_cloud(
