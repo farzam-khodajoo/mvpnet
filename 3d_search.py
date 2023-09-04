@@ -475,29 +475,27 @@ def main():
         # pop window and show differne between prediction and labels
         if args.compare_mvpnet_labels is not None:
             labels = Path(args.target) / "addition" / "{}.png".format(depth_sample_id)
-            if not labels.exists():
-                raise_path_error("label file", labels)
+            if labels.exists():
+                # load labeled image and segment with only valid labels
+                label_image = Image.open(labels)
+                label_np = np.array(label_image)
+                bad_label_ind = np.logical_or(label_np < 0, label_np > 40)
+                label_np[bad_label_ind] = 0
+                segmentaion_labels = nyu40_to_scannet[label_np]
 
-            # load labeled image and segment with only valid labels
-            label_image = Image.open(labels)
-            label_np = np.array(label_image)
-            bad_label_ind = np.logical_or(label_np < 0, label_np > 40)
-            label_np[bad_label_ind] = 0
-            segmentaion_labels = nyu40_to_scannet[label_np]
+                logging.info("Plotting label images")
+                plt.figure(figsize=(7, 4))
+                # label image including invalid images
+                plt.subplot(121)
+                plt.imshow(label_np)
+                plt.title("Original")
 
-            logging.info("Plotting label images")
-            plt.figure(figsize=(7, 4))
-            # label image including invalid images
-            plt.subplot(121)
-            plt.imshow(label_np)
-            plt.title("Original")
+                plt.subplot(122)
+                plt.imshow(segmentaion_labels)
+                plt.title("Valid only (exclude -100)")
 
-            plt.subplot(122)
-            plt.imshow(segmentaion_labels)
-            plt.title("Valid only (exclude -100)")
-
-            plt.tight_layout()
-            plt.show()
+                plt.tight_layout()
+                plt.show()
 
             mvpnet_segmented_pt = draw_point_cloud(
                 unproj_pts, label2color(scene_predicted_labels)
