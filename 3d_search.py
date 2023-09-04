@@ -48,8 +48,8 @@ def save_into_pickle(object, path: str):
         pickle.dump(object, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def read_ids():
-    scannet_3d_dir = Path(SCANNET_DIRECTORY)
+def read_ids(dir=None):
+    scannet_3d_dir = Path(SCANNET_DIRECTORY) if dir is None else Path(dir)
     if not scannet_3d_dir.exists():
         raise_path_error("3D scannet directory", scannet_3d_dir)
 
@@ -59,9 +59,9 @@ def read_ids():
     return scan_ids
 
 
-def get_scenes():
-    scene_dir = Path(SCANNET_DIRECTORY)
-    scan_ids = read_ids()
+def get_scenes(dir=None):
+    scene_dir = Path(SCANNET_DIRECTORY) if dir is None else Path(dir)
+    scan_ids = read_ids(dir)
     return [scene_dir / scanid for scanid in scan_ids]
 
 
@@ -229,7 +229,13 @@ def create_bounding_box(pts):
 
 def main():
     parser = argparse.ArgumentParser()
-
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        required=False,
+        default=None,
+        help="path to scans/ dataset",
+    )
     parser.add_argument(
         "--target",
         type=str,
@@ -284,6 +290,15 @@ def main():
         help="visualize saved report",
     )
     args = parser.parse_args()
+
+    if args.dataset is not None:
+        if not Path(args.dataset).exists():
+            logging.error("Dataset directory {} does not exists".format(args.dataset))
+            exit()
+
+        len_samples = glob(str(Path(args.dataset) / "*"))
+        logging.info("Loading {} samples from dataset {}".format(len(len_samples), args.dataset))
+        SCANNET_DIRECTORY = str(Path(args.dataset))
 
     target_dir = Path(args.target)
     save_dir = Path(args.target) / "report"
@@ -547,10 +562,13 @@ def main():
     # container for knn distance results
     knn_distances = {}
 
-    for scene in tqdm(get_scenes()):
+    all_scenes = get_scenes(args.dataset)
+    for idx, scene in enumerate(all_scenes):
         # check if folder exists
         if not scene.exists():
             raise_path_error("scene", scene)
+
+        logging.info("Loading scene from {} ({}/{})".format(scene, idx+1, len(all_scenes)))
 
         sample_id = scene.name
         sample_ply_scene_path = scene / "{}_vh_clean_2.ply".format(sample_id)
