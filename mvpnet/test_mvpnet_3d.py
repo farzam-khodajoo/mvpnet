@@ -164,8 +164,11 @@ def test(cfg, args, output_dir='', run_name=''):
                 num_pred_per_point[chunk_ind] += 1
             forward_time = time.time() - tic
 
+            logging.info("pred_logit_whole_scene at phase 1 -> {}".format(pred_logit_whole_scene.shape))
             pred_logit_whole_scene = pred_logit_whole_scene / np.maximum(num_pred_per_point[:, np.newaxis], 1)
+            logging.info("pred_logit_whole_scene at phase 2 -> {}".format(pred_logit_whole_scene.shape))
             pred_label_whole_scene = np.argmax(pred_logit_whole_scene, axis=1)
+            logging.info("pred_label_whole_scene shape -> {}".format(pred_label_whole_scene.shape))
 
             no_pred_mask = num_pred_per_point == 0
             no_pred_indices = np.nonzero(no_pred_mask)[0]

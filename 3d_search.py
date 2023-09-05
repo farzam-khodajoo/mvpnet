@@ -11,7 +11,7 @@ from glob import glob
 from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 from mvpnet.utils.o3d_util import draw_point_cloud
 from mvpnet.utils.visualize import label2color
-from mvpnet.data.scannet_2d3d import ScanNet2D3DChunks
+from mvpnet.data.scannet_2d3d import ScanNet2D3DChunksTest, ScanNet2D3DChunks
 from common.utils.checkpoint import CheckpointerV2
 from mvpnet.config.mvpnet_3d import cfg
 from custome_sampler import get_input_batch_sample
@@ -23,6 +23,7 @@ from pathlib import Path
 from plyfile import PlyData
 from PIL import Image
 from tqdm import tqdm
+from prettytable import PrettyTable
 
 
 DEPTH_SCALE_FACTOR = 100.0
@@ -138,6 +139,70 @@ def load_cache(path):
         cache_data = pickle.load(cache)
         return cache_data
 
+def to_cpu(obj):
+    if type(obj) == dict:
+        return {k: v.cpu() for k, v in obj.items()}
+    
+    return obj.cpu()
+
+def plot_2d3d_fusion(model, data_batch):
+    import torch
+    from torch import nn
+    import numpy as np
+
+    from common.nn import SharedMLP
+    from mvpnet.ops.group_points import group_points
+
+    # convert numpy into torch.tensor
+    data_batch = {k: torch.tensor([v]) for k, v in data_batch.items()}
+    # send to CUDA memory
+    data_batch = {k: v.cuda(non_blocking=True) for k, v in data_batch.items()}
+
+    # (batch_size, num_views, 3, h, w)
+    images = data_batch['images']
+    b, nv, _, h, w = images.size()
+    # collapse first 2 dimensions together
+    images = images.reshape([-1] + list(images.shape[2:]))
+
+    # 2D network
+    preds_2d = model.net_2d({'image': images})
+    feature_2d = preds_2d['feature']  # (b * nv, c, h, w)
+
+    # torch.Size([1, 20, 120, 160]) 
+    #print(preds_2d["seg_logit"].size())
+    #print(feature_2d.size())
+
+    # unproject features
+    knn_indices = data_batch['knn_indices']  # (b, np, k)
+    feature_2d = feature_2d.reshape(b, nv, -1, h, w).transpose(1, 2).contiguous()  # (b, c, nv, h, w)
+    feature_2d = feature_2d.reshape(b, -1, nv * h * w)
+    feature_2d = group_points(feature_2d, knn_indices)  # (b, c, np, k)
+
+    # unproject depth maps
+    with torch.no_grad():
+        image_xyz = data_batch['image_xyz']  # (b, nv, h, w, 3)
+        image_xyz = image_xyz.permute(0, 4, 1, 2, 3).reshape(b, 3, nv * h * w)
+        image_xyz = group_points(image_xyz, knn_indices)  # (b, 3, np, k)
+
+    # 2D-3D aggregation
+    points = data_batch['points']
+    feature_2d3d = model.feat_aggreg(image_xyz, points, feature_2d)
+
+    # torch.Size([1, 64, 276996])
+    # print(feature_2d3d.size())
+
+    # 3D network
+    preds_3d = model.net_3d({'points': points, 'feature': feature_2d3d})
+    preds = preds_3d
+
+    out_features = {}
+    out_features["2d_feature"] = to_cpu(feature_2d)
+    out_features["2d_logit"] = to_cpu(preds_2d["seg_logit"])
+    out_features["image_xyz"] = to_cpu(image_xyz)
+    out_features["aggreg"] = to_cpu(feature_2d3d)
+    out_features["3d_logit"] = to_cpu(preds)
+
+    return out_features
 
 def search_scanid(cache_data, scanid):
     id_query = [d for d in cache_data if d["scan_id"] == scanid]
@@ -269,6 +334,34 @@ def main():
         required=False,
         default=None,
         help="save model logit into pickle",
+    )
+    parser.add_argument(
+        "--icp-threshold",
+        type=float,
+        required=False,
+        default=0.5,
+        help="threshold parameter for ICP",
+    )
+    parser.add_argument(
+        "--max-icp-iter",
+        type=int,
+        required=False,
+        default=5_000,
+        help="max iteration for ICP",
+    )
+    parser.add_argument(
+        "--knn-radius",
+        type=float,
+        required=False,
+        default=0.5,
+        help="max iteration for ICP",
+    )
+    parser.add_argument(
+        "--knn-nn",
+        type=float,
+        required=False,
+        default=1,
+        help="max iteration for ICP",
     )
     parser.add_argument(
         "--compare-mvpnet-labels",
@@ -429,14 +522,26 @@ def main():
         scannet_to_nyu40 = np.array(list(label_mapping.keys()) + [0], dtype=np.int64)
         raw_to_scannet = nyu40_to_scannet[raw_to_nyu40]
         label_map_names = tuple(label_mapping.values())
-        print(label_map_names)
-        print(nyu40_to_scannet)
-        print(len(nyu40_to_scannet))
         label_map_ids = [id_ for id_, classname in label_mapping.items()]
+
+        fusion_features = None
 
         if args.pickle is not None:
             logging.info("Loading segmentation from pickle")
             segmentation = get_prediction_segmentation_from_pickle(args.pickle)
+
+            # load feature's pickle file if exists
+            feature_path = Path(args.pickle)
+            feature_header_name = feature_path.name
+            feature_dirname = feature_path.parent
+            feature_path = Path(feature_dirname) / "features.{}".format(feature_header_name)
+
+            if feature_path.exists():
+                logging.info("Loading features from {}".format(feature_path))
+                fusion_features = load_from_pickle(feature_path)
+            else:
+                logging.warning("Skip loading feature's pickle as {} not found".format(feature_path))
+
 
         else:
             logging.info("Loading model")
@@ -465,6 +570,8 @@ def main():
 
             logging.info("Processing segmentation")
             segmentation = predict_segmentation(model=model, data_batch=data)
+            logging.info("Processing features")
+            fusion_features = plot_2d3d_fusion(model=model, data_batch=data)
 
         # save model output into pickle
         if args.save_segmentation_as_pickle is not None:
@@ -477,7 +584,19 @@ def main():
                     args.save_segmentation_as_pickle
                 )
             )
+            # save model segmentation output into pickle file
             save_into_pickle(segmentation, args.save_segmentation_as_pickle)
+            # save model features into pickle file
+            feature_path = Path(args.save_segmentation_as_pickle)
+            feature_header_name = feature_path.name
+            feature_dirname = feature_path.parent
+            feature_path = Path(feature_dirname) / "features.{}".format(feature_header_name)
+            logging.info(
+                "Save model's features into {}".format(
+                    feature_path
+                )
+            )
+            save_into_pickle(fusion_features, feature_path)
 
         scene_predicted_labels = np.argmax(segmentation, axis=1)
 
@@ -512,6 +631,22 @@ def main():
 
                 plt.tight_layout()
                 plt.show()
+
+
+            # loading Resnet segmentation
+            logging.info("Loading 2D Resnet segmentation")
+            resnet_output = fusion_features["2d_logit"].squeeze(0).detach().numpy().T
+            resnet_output = np.argmax(resnet_output, axis=2)
+            plt.imshow(resnet_output)
+            plt.show()
+
+            logging.info("Loading depth map projection")
+            image_xyz = fusion_features["image_xyz"].squeeze(0).detach().numpy()
+            image_xyz_pts = []
+            for idx in range(len(image_xyz)):
+                image_xyz_pts.append(draw_point_cloud(image_xyz[idx]))
+
+            o3d.visualization.draw_geometries(image_xyz_pts, width=500, height=500)
 
             mvpnet_segmented_pt = draw_point_cloud(
                 unproj_pts, label2color(scene_predicted_labels)
@@ -559,7 +694,15 @@ def main():
         unproj_pts = masked_unproj_pts
         logging.info("New masked projection size: {}".format(unproj_pts.shape))
 
-    logging.info("Searching scenes")
+
+    param_table = PrettyTable()
+    param_table.field_names = ["Param", "value"]
+    param_table.add_row(["KDTreeFlann radius", args.knn_radius])
+    param_table.add_row(["KDTreeFlann nn", args.knn_nn])
+    param_table.add_row(["ICP threshold", args.icp_threshold])
+    param_table.add_row(["ICP maximum iteration", args.max_icp_iter])
+
+    print(param_table)
     # container for knn distance results
     knn_distances = {}
 
@@ -584,7 +727,7 @@ def main():
         for idx in tqdm(range(len(unproj_pts))):
             # find a neighbor that is at most 1cm away
             found, idx_point, dist = pcd_tree.search_hybrid_vector_3d(
-                unproj_pts[idx, :3], 0.5, 1
+                unproj_pts[idx, :3], args.knn_radius, args.knn_nn
             )
             if found:
                 overlaps[idx_point] = True
@@ -602,10 +745,10 @@ def main():
             reg_p2p = o3d.registration.registration_icp(
                 unproj_pts_vis,
                 overlap_base_pts_vis,
-                threshold,
+                args.icp_threshold,
                 trans_init,
                 o3d.registration.TransformationEstimationPointToPoint(),
-                o3d.registration.ICPConvergenceCriteria(max_iteration=max_iter),
+                o3d.registration.ICPConvergenceCriteria(max_iteration=args.max_icp_iter),
             )
 
             alignment_error = reg_p2p.inlier_rmse
@@ -670,6 +813,55 @@ def main():
     )
     np.save(save_dir / "{}_lines".format(result_scan_id), result_overlap)
 
+    # save center xyz into file
+    with open(save_dir / "position.txt", "w") as file:
+        centroid = overlap_point_cloud.get_center()
+        logging.info("Saving {} coordinate into {}".format(centroid, save_dir / "position.txt"))
+        file.write(f"{centroid[0]}\n{centroid[1]}\n{centroid[2]}")
+
+
+    if args.mvpnet:
+        logging.info("Loading MVPNet segmentation for entire scene {}".format(result_scan_id))
+        cache_dir = Path(ROOT_DIRECTORY) / "pickles"
+        image_dir = Path(ROOT_DIRECTORY) / "scans_resize_160x120"
+        if not cache_dir.exists(): raise_path_error("cache file", cache_dir)
+        if not image_dir.exists(): raise_path_error("image directory", image_dir)
+
+        logging.info("Loading dataset")
+        test_dataset = ScanNet2D3DChunksTest(
+            cache_dir=cache_dir,
+            image_dir=image_dir,
+            split="test",
+            to_tensor=True,
+            num_rgbd_frames=4,
+            chunk_size=(2, 2),
+            chunk_margin=(10, 10),
+        )
+
+        test_dataset.scan_ids = read_ids()
+
+        search_id = [(idx, d) for idx, d in enumerate(test_dataset.data) if d["scan_id"] == result_scan_id]
+        if len(search_id) == 0:
+            logging.error("Scene {} not found in test_dataset".format(result_scan_id))
+            exit()
+
+        scan_index, scan_context = search_id[0]
+
+        logging.info("Loading scene from dataset (preprocessing)")
+        input_sample = test_dataset[scan_index][0]
+        logging.info("Inference model")
+        segmentation = predict_segmentation(model=model, data_batch=input_sample)
+        scene_predicted_labels = np.argmax(segmentation, axis=1)
+
+        logging.info("Creating point cloud")
+        mvpnet_segmented_pt = draw_point_cloud(
+            scene_point_cloud, label2color(scene_predicted_labels)
+        )
+
+        o3d.visualization.draw_geometries(
+            [bbox, mvpnet_segmented_pt], height=500, width=500
+        )
+        
 
 if __name__ == "__main__":
     main()

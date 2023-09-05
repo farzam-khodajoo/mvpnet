@@ -24,7 +24,7 @@ if is_windows:
     extend_path = extend_path.replace("/", "\\")
 
 sys.path.append(extend_path)
-from SETTING import ROOT_DIRECTORY
+from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 
 # DATA_DIR = '/datasets_local/ScanNet'
 # SCAN_DIR = 'scans_resize_160x120'
@@ -284,16 +284,28 @@ def main():
     parser.add_argument('-s', '--split', required=True, type=str, help='split[train/val/test]')
     parser.add_argument('--rgbd', action='store_true', help='compute RGBD overlaps for MVPNet')
     parser.add_argument('--debug', action="store_true", help='show .ply files with open3d')
+    parser.add_argument('--all', action="store_true", help='dump all sample into single pickle')
     args = parser.parse_args()
 
     split_filename = osp.join(META_DIR, 'scannetv2_{:s}.txt'.format(args.split))
     with open(split_filename, 'r') as f:
         scan_ids = [line.rstrip() for line in f]
+
+        if args.all:
+            print("listing all scan ids..")
+            scannet_3d_dir = Path(SCANNET_DIRECTORY)
+            if not scannet_3d_dir.exists():
+                print("folder {} does not exists !".format(scannet_3d_dir))
+                exit()
+
+            dir_names = scannet_3d_dir.iterdir()
+            dir_names = list(dir_names)  # convert to list from generator
+            scan_ids = [name.name for name in dir_names]
+            print("all scans: {}".format(scan_ids))
+
     is_test = (args.split == 'test')
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
-
-
 
     # Debug
     if args.debug:
@@ -313,6 +325,8 @@ def main():
 
     if args.output_dir is not None:
         output_path = osp.join(output_dir, 'scannetv2_{}.pkl'.format(args.split))
+        if args.all:
+            output_path = osp.join(output_dir, 'scannetv2_all.pkl')
         print('Save to {}'.format(osp.abspath(output_path)))
         with open(output_path, 'wb') as f:
             pickle.dump(res, f, protocol=pickle.HIGHEST_PROTOCOL)
