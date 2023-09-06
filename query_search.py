@@ -442,11 +442,11 @@ def main():
             if not args.no_mvpnet:
                 data = get_input_batch_sample(
                     points=projection,
-                    color=ctx["color"],
-                    depth=ctx["depth"],
+                    color=Image.open(ctx["color_path"]),
+                    depth=Image.open(ctx["depth_path"]),
                     pose=ctx["pose"],
                     cam_matrix=ctx["cam_matrix"],
-                    depth_scale_factor=1.,
+                    depth_scale_factor=1000.,
                 )
 
                 label_names = list(query_2d.scannet_mapping.values())

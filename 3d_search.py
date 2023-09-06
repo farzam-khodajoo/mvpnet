@@ -855,7 +855,7 @@ def main():
 
         logging.info("Creating point cloud")
         mvpnet_segmented_pt = draw_point_cloud(
-            scene_point_cloud, label2color(scene_predicted_labels)
+            np.asarray(scene_point_cloud.points), label2color(scene_predicted_labels)
         )
 
         o3d.visualization.draw_geometries(
