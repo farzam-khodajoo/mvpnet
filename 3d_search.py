@@ -849,7 +849,7 @@ def main():
 
         logging.info("Loading scene from dataset (preprocessing)")
         input_sample = test_dataset[scan_index][0]
-        logging.info("Inference model")
+        logging.info("Inferencing model")
         segmentation = predict_segmentation(model=model, data_batch=input_sample)
         scene_predicted_labels = np.argmax(segmentation, axis=1)
 
