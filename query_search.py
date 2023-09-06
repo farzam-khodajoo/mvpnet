@@ -10,7 +10,8 @@ from plyfile import PlyData
 from tqdm import tqdm
 from prettytable import PrettyTable
 import argparse
-from sklearn.metrics import confusion_matrix as CM
+from matplotlib import pyplot as plt
+from sklearn.metrics import confusion_matrix as CM, ConfusionMatrixDisplay
 from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 
 
@@ -25,6 +26,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 SCANNET_2D_DIRECTORY = Path(ROOT_DIRECTORY) / "2d_scannet"
+
 
 def load_model(config):
     # the reason this dependencies are imported right here
@@ -102,8 +104,8 @@ def read_pc_from_ply(filename, return_color=False, return_label=False):
     return pc
 
 
-def calculate_confusion(labels, predictions):
-    return CM(labels, predictions, labels=labels)
+def calculate_confusion(true_labels, predictions, labels):
+    return CM(true_labels, predictions, labels=labels)
 
 
 class Query2D:
@@ -289,16 +291,12 @@ class Search3D:
             sample_ply_scene_path = scene / "{}_vh_clean_2.ply".format(sample_id)
             check_path(sample_ply_scene_path)
 
-            logging.info(
-                "Loading scene {} ({}/{})".format(sample_id, idx, len(self.all_scenes))
-            )
-
             pc = read_pc_from_ply(sample_ply_scene_path, return_color=True)
             scene_point_cloud = draw_point_cloud(pc["points"])
             pcd_tree = o3d.geometry.KDTreeFlann(scene_point_cloud)
             overlaps = np.zeros([len(np.asarray(scene_point_cloud.points))], dtype=bool)
 
-            for point_idx in tqdm(range(len(point_cloud))):
+            for point_idx in range(len(point_cloud)):
                 found, idx_point, dist = pcd_tree.search_hybrid_vector_3d(
                     point_cloud[point_idx, :3], self.KNN_RADIUS, self.KNN_NN
                 )
@@ -334,8 +332,8 @@ class Search3D:
                 )
 
         if len(all_knns) < 1:
-            logging.warning("No similarity have been found.")
-            exit()
+            # no candidate found
+            return "NC"
 
         query_distances = [dis for dis in all_knns.keys()]
         min_distance = min(query_distances)
@@ -386,9 +384,7 @@ def main():
     model_config = Path.cwd() / "configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml"
     check_path(model_config)
 
-    output_directory = (
-        Path.cwd() / "outputs/scannet/mvpnet_3d_unet_resnet34_pn2ssg"
-    )
+    output_directory = Path.cwd() / "outputs/scannet/mvpnet_3d_unet_resnet34_pn2ssg"
     check_path(output_directory)
 
     query_2d = Query2D(scannet_2d_dir=SCANNET_2D_DIRECTORY)
@@ -405,9 +401,12 @@ def main():
         # this will resume and load last checkpoint
         checkpointer.load(None, resume=True)
 
-
     if args.label is not None:
         searcher = Search3D(scans_dir=SCANNET_DIRECTORY)
+        confusion_labels = searcher.read_ids(path=Path(SCANNET_DIRECTORY))
+        confusion_labels = [name.replace("scene", "") for name in confusion_labels]
+        confusion_labels.insert(0, "NC")
+        print(confusion_labels)
 
         results = query_2d.collect_from_label(
             label=args.label, max_to_keep=args.keep, skip=args.skip
@@ -419,7 +418,8 @@ def main():
         mvpnet_true_scenes = []
         mavpnet_predicted_scenes = []
 
-        for idx, ctx in enumerate(results):
+        logging.info("Start 3D search")
+        for ctx in tqdm(results):
             search_start_date = datetime.now()
             projection = unproject(ctx["cam_matrix"], ctx["depth"])
             projection = (
@@ -429,15 +429,8 @@ def main():
             searched_scanid = searcher.search(projection)
             target_scanid = ctx["scanid"]
 
-            true_scenes.append(target_scanid)
-            raw_predicted_scenes.append(searched_scanid)
-
-            search_end_date = datetime.now() - search_start_date
-            logging.info(
-                "Progress raw ({}/{}) in {}s".format(
-                    idx, len(results), search_end_date.seconds
-                )
-            )
+            true_scenes.append(target_scanid.replace("scene", ""))
+            raw_predicted_scenes.append(searched_scanid.replace("scene", ""))
 
             if not args.no_mvpnet:
                 data = get_input_batch_sample(
@@ -446,34 +439,51 @@ def main():
                     depth=Image.open(ctx["depth_path"]),
                     pose=ctx["pose"],
                     cam_matrix=ctx["cam_matrix"],
-                    depth_scale_factor=1000.,
+                    depth_scale_factor=1000.0,
                 )
 
                 label_names = list(query_2d.scannet_mapping.values())
                 if not args.label in label_names:
-                    logging.error("Label {} does not exist in {}".format(args.label, label_names))
+                    logging.error(
+                        "Label {} does not exist in {}".format(args.label, label_names)
+                    )
                     exit()
 
                 choosen_label = label_names.index(args.label)
                 segmentation = predict_segmentation(model=model, data_batch=data)
                 scene_predicted_labels = np.argmax(segmentation, axis=1)
+
                 label_mask = np.where(scene_predicted_labels == choosen_label)
                 masked_unproj_pts = projection[label_mask]
 
                 searched_scanid = searcher.search(masked_unproj_pts)
                 target_scanid = ctx["scanid"]
 
-                mvpnet_true_scenes.append(target_scanid)
-                mavpnet_predicted_scenes.append(searched_scanid)
+                mvpnet_true_scenes.append(target_scanid.replace("scene", ""))
+                mavpnet_predicted_scenes.append(searched_scanid.replace("scene", ""))
 
-                search_end_date = datetime.now() - search_start_date
-                logging.info(
-                    "Progress mvpnet ({}/{}) in {}s".format(
-                        idx, len(results), search_end_date.seconds
-                    )
-                )
+        cm_raw = calculate_confusion(
+            true_scenes, raw_predicted_scenes, labels=confusion_labels
+        )
 
-        print(calculate_confusion(true_scenes, raw_predicted_scenes))
+        disp = ConfusionMatrixDisplay(
+            confusion_matrix=cm_raw, display_labels=confusion_labels
+        )
+
+        disp.plot()
+        plt.show()
+
+        if not args.no_mvpnet:
+            cm_mvpnet = calculate_confusion(
+                mvpnet_true_scenes, mavpnet_predicted_scenes, labels=confusion_labels
+            )
+
+            disp = ConfusionMatrixDisplay(
+                confusion_matrix=cm_mvpnet, display_labels=confusion_labels
+            )
+
+            disp.plot()
+            plt.show()
 
 
 if __name__ == "__main__":
