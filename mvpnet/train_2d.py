@@ -51,11 +51,19 @@ def parse_args():
         default=None,
         nargs=argparse.REMAINDER,
     )
+
+    parser.add_argument(
+        "--epochs",
+        help="how many times to run over dataloader",
+        default=5,
+        type=int
+    )
+
     args = parser.parse_args()
     return args
 
 
-def train(cfg, output_dir='', run_name=''):
+def train(cfg, output_dir='', run_name='', epoch=5):
     # ---------------------------------------------------------------------------- #
     # Build models, optimizer, scheduler, checkpointer, etc.
     # It is recommended not to modify this section.
@@ -159,133 +167,61 @@ def train(cfg, output_dir='', run_name=''):
 
     setup_train()
     end = time.time()
-    for iteration, data_batch in enumerate(train_dataloader, start_iteration):
-        data_time = time.time() - end
-        # copy data from cpu to gpu
-        data_batch = {k: v.cuda(non_blocking=True) for k, v in data_batch.items()}
-        # forward
-        preds = model(data_batch)
-        # update losses
-        optimizer.zero_grad()
-        loss_dict = loss_fn(preds, data_batch)
-        total_loss = sum(loss_dict.values())
 
-        # It is slightly faster to update metrics and meters before backward
-        with torch.no_grad():
-            train_metric_logger.update(loss=total_loss, **loss_dict)
-            for metric in train_metric:
-                metric.update_dict(preds, data_batch)
+    for epoch_iteration in range(epoch):
+        for iteration, data_batch in enumerate(train_dataloader, start_iteration):
+            data_time = time.time() - end
+            # copy data from cpu to gpu
+            data_batch = {k: v.cuda(non_blocking=True) for k, v in data_batch.items()}
+            # forward
+            preds = model(data_batch)
+            # update losses
+            optimizer.zero_grad()
+            loss_dict = loss_fn(preds, data_batch)
+            total_loss = sum(loss_dict.values())
 
-        # backward
-        total_loss.backward()
-        if cfg.OPTIMIZER.MAX_GRAD_NORM > 0:
-            # CAUTION: built-in clip_grad_norm_ clips the total norm.
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm=cfg.OPTIMIZER.MAX_GRAD_NORM)
-        optimizer.step()
+            # It is slightly faster to update metrics and meters before backward
+            with torch.no_grad():
+                train_metric_logger.update(loss=total_loss, **loss_dict)
+                for metric in train_metric:
+                    metric.update_dict(preds, data_batch)
 
-        batch_time = time.time() - end
-        train_metric_logger.update(time=batch_time, data=data_time)
-        cur_iter = iteration + 1
+            # backward
+            total_loss.backward()
+            if cfg.OPTIMIZER.MAX_GRAD_NORM > 0:
+                # CAUTION: built-in clip_grad_norm_ clips the total norm.
+                nn.utils.clip_grad_norm_(model.parameters(), max_norm=cfg.OPTIMIZER.MAX_GRAD_NORM)
+            optimizer.step()
 
-        # log
-        if cur_iter == 1 or (cfg.TRAIN.LOG_PERIOD > 0 and cur_iter % cfg.TRAIN.LOG_PERIOD) == 0:
-            logger.info(
-                train_metric_logger.delimiter.join(
-                    [
-                        'iter: {iter:4d}',
-                        '{meters}',
-                        'lr: {lr:.2e}',
-                        'max mem: {memory:.0f}',
-                    ]
-                ).format(
-                    iter=cur_iter,
-                    meters=str(train_metric_logger),
-                    lr=optimizer.param_groups[0]['lr'],
-                    memory=torch.cuda.max_memory_allocated() / (1024.0 ** 2),
+            batch_time = time.time() - end
+            train_metric_logger.update(time=batch_time, data=data_time)
+            cur_iter = iteration + 1
+
+            # log
+            if cur_iter == 1 or (cfg.TRAIN.LOG_PERIOD > 0 and cur_iter % cfg.TRAIN.LOG_PERIOD) == 0:
+                logger.info(
+                    train_metric_logger.delimiter.join(
+                        [
+                            'iter: {iter:4d}',
+                            '{meters}',
+                            'lr: {lr:.2e}',
+                            'max mem: {memory:.0f}',
+                        ]
+                    ).format(
+                        iter=cur_iter,
+                        meters=str(train_metric_logger),
+                        lr=optimizer.param_groups[0]['lr'],
+                        memory=torch.cuda.max_memory_allocated() / (1024.0 ** 2),
+                    )
                 )
-            )
-
-        # summary
-        if summary_writier is not None and cfg.TRAIN.SUMMARY_PERIOD > 0 and cur_iter % cfg.TRAIN.SUMMARY_PERIOD == 0:
-            keywords = ('loss', 'acc', 'iou')
-            for name, meter in train_metric_logger.meters.items():
-                if all(k not in name for k in keywords):
-                    continue
-                summary_writier.add_scalar('train/' + name, meter.global_avg, global_step=cur_iter)
-            with torch.no_grad():
-                # summary images
-                image = data_batch['image'][0].cpu().numpy()  # (3, h, w)
-                image = np.transpose(image, [1, 2, 0])
-                image = image * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)
-                seg_label = data_batch['seg_label'][0].cpu().numpy()  # (h, w)
-                seg_label[seg_label < 0] = len(color_palette) - 1
-                seg_logit = preds['seg_logit'][0].cpu().numpy()  # (c, h, w)
-                pred_label = seg_logit.argmax(0)
-                pred_image = color_palette[pred_label, :]  # (h, w, 3)
-                gt_image = color_palette[seg_label, :]  # (h, w, 3)
-                summary_writier.add_image('train/' + 'input', image, global_step=cur_iter, dataformats='HWC')
-                summary_writier.add_image('train/' + 'pred', pred_image, global_step=cur_iter, dataformats='HWC')
-                summary_writier.add_image('train/' + 'gt', gt_image, global_step=cur_iter, dataformats='HWC')
-
-        # checkpoint
-        if (ckpt_period > 0 and cur_iter % ckpt_period == 0) or cur_iter == max_iteration:
-            checkpoint_data['iteration'] = cur_iter
-            checkpoint_data[best_metric_name] = best_metric
-            checkpointer.save('model_{:06d}'.format(cur_iter), **checkpoint_data)
-
-        # ---------------------------------------------------------------------------- #
-        # validate for one epoch
-        # ---------------------------------------------------------------------------- #
-        if val_period > 0 and (cur_iter % val_period == 0 or cur_iter == max_iteration):
-            start_time_val = time.time()
-            setup_validate()
-
-            end = time.time()
-            with torch.no_grad():
-                for iteration_val, data_batch in enumerate(val_dataloader):
-                    data_time = time.time() - end
-                    # copy data from cpu to gpu
-                    data_batch = {k: v.cuda(non_blocking=True) for k, v in data_batch.items()}
-                    # forward
-                    preds = model(data_batch)
-                    # update losses and metrics
-                    loss_dict = loss_fn(preds, data_batch)
-                    total_loss = sum(loss_dict.values())
-                    # update metrics and meters
-                    val_metric_logger.update(loss=total_loss, **loss_dict)
-                    for metric in val_metric:
-                        metric.update_dict(preds, data_batch)
-
-                    batch_time = time.time() - end
-                    val_metric_logger.update(time=batch_time, data=data_time)
-                    end = time.time()
-
-                    if cfg.VAL.LOG_PERIOD > 0 and iteration_val % cfg.VAL.LOG_PERIOD == 0:
-                        logger.info(
-                            val_metric_logger.delimiter.join(
-                                [
-                                    'iter: {iter:4d}',
-                                    '{meters}',
-                                    'max mem: {memory:.0f}',
-                                ]
-                            ).format(
-                                iter=iteration,
-                                meters=str(val_metric_logger),
-                                memory=torch.cuda.max_memory_allocated() / (1024.0 ** 2),
-                            )
-                        )
-
-            epoch_time_val = time.time() - start_time_val
-            logger.info('Iteration[{}]-Val {}  total_time: {:.2f}s'.format(
-                cur_iter, val_metric_logger.summary_str, epoch_time_val))
 
             # summary
-            if summary_writier is not None:
+            if summary_writier is not None and cfg.TRAIN.SUMMARY_PERIOD > 0 and cur_iter % cfg.TRAIN.SUMMARY_PERIOD == 0:
                 keywords = ('loss', 'acc', 'iou')
-                for name, meter in val_metric_logger.meters.items():
+                for name, meter in train_metric_logger.meters.items():
                     if all(k not in name for k in keywords):
                         continue
-                    summary_writier.add_scalar('val/' + name, meter.global_avg, global_step=cur_iter)
+                    summary_writier.add_scalar('train/' + name, meter.global_avg, global_step=cur_iter)
                 with torch.no_grad():
                     # summary images
                     image = data_batch['image'][0].cpu().numpy()  # (3, h, w)
@@ -297,20 +233,94 @@ def train(cfg, output_dir='', run_name=''):
                     pred_label = seg_logit.argmax(0)
                     pred_image = color_palette[pred_label, :]  # (h, w, 3)
                     gt_image = color_palette[seg_label, :]  # (h, w, 3)
-                    summary_writier.add_image('val/' + 'input', image, global_step=cur_iter, dataformats='HWC')
-                    summary_writier.add_image('val/' + 'pred', pred_image, global_step=cur_iter, dataformats='HWC')
-                    summary_writier.add_image('val/' + 'gt', gt_image, global_step=cur_iter, dataformats='HWC')
+                    summary_writier.add_image('train/' + 'input', image, global_step=cur_iter, dataformats='HWC')
+                    summary_writier.add_image('train/' + 'pred', pred_image, global_step=cur_iter, dataformats='HWC')
+                    summary_writier.add_image('train/' + 'gt', gt_image, global_step=cur_iter, dataformats='HWC')
 
-            # best validation
-            if cfg.VAL.METRIC in val_metric_logger.meters:
-                cur_metric = val_metric_logger.meters[cfg.VAL.METRIC].global_avg
-                if best_metric is None \
-                        or ('loss' not in cfg.VAL.METRIC and cur_metric > best_metric) \
-                        or ('loss' in cfg.VAL.METRIC and cur_metric < best_metric):
-                    best_metric = cur_metric
-                    checkpoint_data['iteration'] = cur_iter
-                    checkpoint_data[best_metric_name] = best_metric
-                    checkpointer.save('model_best', tag=False, **checkpoint_data)
+            # checkpoint
+            if (ckpt_period > 0 and cur_iter % ckpt_period == 0) or cur_iter == max_iteration:
+                checkpoint_data['iteration'] = cur_iter
+                checkpoint_data[best_metric_name] = best_metric
+                checkpointer.save('model_{:06d}'.format(cur_iter), **checkpoint_data)
+
+            # ---------------------------------------------------------------------------- #
+            # validate for one epoch
+            # ---------------------------------------------------------------------------- #
+            if val_period > 0 and (cur_iter % val_period == 0 or cur_iter == max_iteration):
+                start_time_val = time.time()
+                setup_validate()
+
+                end = time.time()
+                with torch.no_grad():
+                    for iteration_val, data_batch in enumerate(val_dataloader):
+                        data_time = time.time() - end
+                        # copy data from cpu to gpu
+                        data_batch = {k: v.cuda(non_blocking=True) for k, v in data_batch.items()}
+                        # forward
+                        preds = model(data_batch)
+                        # update losses and metrics
+                        loss_dict = loss_fn(preds, data_batch)
+                        total_loss = sum(loss_dict.values())
+                        # update metrics and meters
+                        val_metric_logger.update(loss=total_loss, **loss_dict)
+                        for metric in val_metric:
+                            metric.update_dict(preds, data_batch)
+
+                        batch_time = time.time() - end
+                        val_metric_logger.update(time=batch_time, data=data_time)
+                        end = time.time()
+
+                        if cfg.VAL.LOG_PERIOD > 0 and iteration_val % cfg.VAL.LOG_PERIOD == 0:
+                            logger.info(
+                                val_metric_logger.delimiter.join(
+                                    [
+                                        'iter: {iter:4d}',
+                                        '{meters}',
+                                        'max mem: {memory:.0f}',
+                                    ]
+                                ).format(
+                                    iter=iteration,
+                                    meters=str(val_metric_logger),
+                                    memory=torch.cuda.max_memory_allocated() / (1024.0 ** 2),
+                                )
+                            )
+
+                epoch_time_val = time.time() - start_time_val
+                logger.info('Iteration[{}]-Val {}  total_time: {:.2f}s'.format(
+                    cur_iter, val_metric_logger.summary_str, epoch_time_val))
+
+                # summary
+                if summary_writier is not None:
+                    keywords = ('loss', 'acc', 'iou')
+                    for name, meter in val_metric_logger.meters.items():
+                        if all(k not in name for k in keywords):
+                            continue
+                        summary_writier.add_scalar('val/' + name, meter.global_avg, global_step=cur_iter)
+                    with torch.no_grad():
+                        # summary images
+                        image = data_batch['image'][0].cpu().numpy()  # (3, h, w)
+                        image = np.transpose(image, [1, 2, 0])
+                        image = image * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)
+                        seg_label = data_batch['seg_label'][0].cpu().numpy()  # (h, w)
+                        seg_label[seg_label < 0] = len(color_palette) - 1
+                        seg_logit = preds['seg_logit'][0].cpu().numpy()  # (c, h, w)
+                        pred_label = seg_logit.argmax(0)
+                        pred_image = color_palette[pred_label, :]  # (h, w, 3)
+                        gt_image = color_palette[seg_label, :]  # (h, w, 3)
+                        summary_writier.add_image('val/' + 'input', image, global_step=cur_iter, dataformats='HWC')
+                        summary_writier.add_image('val/' + 'pred', pred_image, global_step=cur_iter, dataformats='HWC')
+                        summary_writier.add_image('val/' + 'gt', gt_image, global_step=cur_iter, dataformats='HWC')
+
+                # best validation
+                if cfg.VAL.METRIC in val_metric_logger.meters:
+                    cur_metric = val_metric_logger.meters[cfg.VAL.METRIC].global_avg
+                    if best_metric is None \
+                            or ('loss' not in cfg.VAL.METRIC and cur_metric > best_metric) \
+                            or ('loss' in cfg.VAL.METRIC and cur_metric < best_metric):
+                        best_metric = cur_metric
+                        checkpoint_data['iteration'] = cur_iter
+                        checkpoint_data[best_metric_name] = best_metric
+                        checkpointer.save('model_best', tag=False, **checkpoint_data)
 
             # restore training
             setup_train()
@@ -361,7 +371,7 @@ def main():
     logger.info('Running with config:\n{}'.format(cfg))
 
     assert cfg.TASK == 'sem_seg_2d'
-    train(cfg, output_dir, run_name)
+    train(cfg, output_dir, run_name, epoch=args.epochs)
 
 
 if __name__ == '__main__':
