@@ -1,5 +1,5 @@
 from typing import List
-import torch
+#import torch
 import argparse
 import pickle
 import numpy as np
@@ -18,7 +18,7 @@ from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 RESIZE_DATASET = Path(ROOT_DIRECTORY) / "scans_resize_160x120"
 
 def read_ids():
-    scannet_2d_dir = Path(ROOT_DIRECTORY) / "2d_scannet"
+    scannet_2d_dir = Path(ROOT_DIRECTORY) / "scans_resize_160x120"
     if not scannet_2d_dir.exists():
         print("[Error] path {} not found !".format(scannet_2d_dir))
         exit()
@@ -99,6 +99,8 @@ def main():
         for scanid in id_list:
             print(scanid)
         exit()
+
+    print(args.predict)
 
     if args.list is None and args.id is None:
         print("[Error] either use --list or --id")
