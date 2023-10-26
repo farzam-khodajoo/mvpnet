@@ -158,7 +158,6 @@ def main():
         search_id = [d for d in test_dataset.data if d["scan_id"] == args.id]
         if len(search_id) == 0:
             print("scanid {} not found in dataset !".format(search_id))
-            print(test_dataset.data)
             exit()
 
         scan_index = None
