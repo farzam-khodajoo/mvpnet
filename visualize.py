@@ -1,5 +1,6 @@
+import logging
 from typing import List
-#import torch
+import torch
 import argparse
 import pickle
 import numpy as np
@@ -17,6 +18,11 @@ from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 
 RESIZE_DATASET = Path(ROOT_DIRECTORY) / "scans_resize_160x120"
 
+def raise_path_error(title, path=""):
+    logging.error("{} {}".format(title, path))
+    exit()
+
+
 def read_ids():
     scannet_2d_dir = Path(ROOT_DIRECTORY) / "scans_resize_160x120"
     if not scannet_2d_dir.exists():
@@ -24,9 +30,10 @@ def read_ids():
         exit()
 
     dir_names = scannet_2d_dir.iterdir()
-    dir_names: List[Path] = list(dir_names) # convert to list from generator
+    dir_names: List[Path] = list(dir_names)  # convert to list from generator
     scan_ids = [name.name for name in dir_names]
     return scan_ids
+
 
 def query_3d_samples(sample_directory):
     scan_id = Path(sample_directory).name
@@ -53,6 +60,40 @@ def read_ply(filename):
     return points, colors, label
 
 
+def load_model(config):
+    # the reason this dependencies are imported right here
+    # is that model side requires compile CUDA libraries
+    # which is impossible on non-nvidia device
+    # so we import only when model is required
+    from mvpnet.models.build import build_model_mvpnet_3d
+
+    cfg.merge_from_file(str(config))
+    model = build_model_mvpnet_3d(cfg)[0]
+    model = model.cuda()
+    model.eval()
+
+    return model
+
+
+def get_prediction_labels(predict):
+    seg_logit = predict["seg_logit"].squeeze(0).cpu().detach().numpy().T
+
+    return seg_logit
+
+
+def predict_segmentation(model, data_batch: dict):
+    # convert numpy into torch.tensor
+    data_batch = {k: torch.tensor([v]) for k, v in data_batch.items()}
+    # send to CUDA memory
+    data_batch = {k: v.cuda(non_blocking=True) for k, v in data_batch.items()}
+
+    predict = model(data_batch)
+    # send back to CPU
+    predict = {k: v.cpu() for k, v in predict.items()}
+
+    return get_prediction_labels(predict)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -62,7 +103,11 @@ def main():
         help="list available scan ids",
     )
     parser.add_argument(
-        "--id", type=str, required=False, default=None, help="sample id from valdidation split"
+        "--id",
+        type=str,
+        required=False,
+        default=None,
+        help="sample id from valdidation split",
     )
     parser.add_argument(
         "--predict",
@@ -95,7 +140,7 @@ def main():
     if args.list:
         id_list = read_ids()
         print("total ids: {}".format(len(id_list)))
-        print("#"*10)
+        print("#" * 10)
         for scanid in id_list:
             print(scanid)
         exit()
@@ -109,7 +154,9 @@ def main():
         print("scan_id {} not found !".format(args.id))
         exit()
 
-    point_cloud_path, labeled_cloud_path = query_3d_samples(str(Path(SCANNET_DIRECTORY) / args.id))
+    point_cloud_path, labeled_cloud_path = query_3d_samples(
+        str(Path(SCANNET_DIRECTORY) / args.id)
+    )
     label_point_cloud, _, label = read_ply(labeled_cloud_path)
 
     # plot 3D space with labels
@@ -121,17 +168,14 @@ def main():
         o3d.visualization.draw_geometries([result], width=480, height=480)
 
     if args.predict or args.load is not False:
-
         model_config = str(
             Path.cwd() / "configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml"
         )
 
-        if not Path(model_config).exists():
-            print("path {} not found !".format(model_config))
-            exit()
-        cfg.merge_from_file(model_config)
+        if not model_config.exists():
+            raise_path_error("pn2ssg config file", model_config)
 
-        # model, loss_fn, train_metric, val_metric = build_model_mvpnet_3d(cfg)
+            # model, loss_fn, train_metric, val_metric = build_model_mvpnet_3d(cfg)
 
         print("Loading dataset ..")
         cache_dir = Path(ROOT_DIRECTORY) / "pickles"
@@ -155,92 +199,38 @@ def main():
             chunk_margin=(10, 10),
         )
 
-        search_id = [d for d in test_dataset.data if d["scan_id"] == args.id]
+        search_id = [
+            (idx, d)
+            for idx, d in enumerate(test_dataset.data)
+            if d["scan_id"] == args.id
+        ]
+
         if len(search_id) == 0:
             print("scanid {} not found in dataset !".format(search_id))
             exit()
 
-        scan_index = None
-
-        for idx, dc in enumerate(test_dataset.data):
-            if dc["scan_id"] == args.id:
-                scan_index = idx
-                print("index {} has been found".format(idx))
-
-        if scan_index is None:
-            print("scan index {} not found in dataset".format(args.id))
-            exit()
-
-        print("Fetch sample from dataset ..")
-        input_sample = test_dataset.__getitem__(scan_index)
-        input_sample = input_sample[0]
-        chunk_ind = input_sample.pop('chunk_ind')
-
-        print(input_sample.keys())
-        print(input_sample["points"].shape)
-        print(input_sample["images"].shape)
-        print(input_sample["image_xyz"].shape)
-        print(input_sample["image_mask"].shape)
-        print(input_sample["knn_indices"].shape)
+        scan_index, scan_context = search_id[0]
 
         if args.predict:
-            print("Loading model ..")
-            from mvpnet.models.build import build_model_mvpnet_3d
-            from mvpnet.models.build import build_model_sem_seg_2d
-            print("Building model ..")
-            cfg.merge_from_file(str(model_config))
-            model = build_model_mvpnet_3d(cfg)[0]
-            model = model.cuda()
-            model.eval()
 
-            print("Predict ..")
-            data_batch = {k: torch.tensor([v]) for k, v in input_sample.items()}
-            data_batch = {k: v.cuda(non_blocking=True) for k, v in data_batch.items()}
-            predict = model(data_batch)
-            # move from CUDA to cpu
-            predict = {k: v.cpu() for k, v in predict.items()}
+            logging.info("Loading model..")
+            model = load_model(config=model_config)
 
-        if args.load is not False:
-            if not Path(args.load).exists():
-                print("loading failed ! path {} not found".format(args.load))
+            logging.info("Loading scene from dataset (preprocessing)")
+            input_sample = test_dataset[scan_index][0]
 
-            print("Loading pickle from {}".format(args.load))
+            logging.info("Inferencing model")
+            segmentation = predict_segmentation(model=model, data_batch=input_sample)
+            scene_predicted_labels = np.argmax(segmentation, axis=1)
 
-            with open(args.load, "rb") as handle:
-                predict = pickle.load(handle)
-
-        seg_logit = predict["seg_logit"].squeeze(0).cpu().detach().numpy().T
-        seg_logit = seg_logit[:len(chunk_ind)]
-
-        print("segmentation logit: ", seg_logit.shape)
-        print("segmentation points: ", np.unique(seg_logit))
-        print("segmentation argmax: ", np.argmax(seg_logit, axis=1).shape)
-        print("label shape: ", input_sample["points"].shape)
-
-        chunk_points = input_sample["points"]
-        chunk_points = chunk_points.reshape((chunk_points.shape[1], 3))
-        logit_labels = np.argmax(seg_logit, axis=1)
-
-        print("chunks: {} -> {}".format(label_point_cloud.shape, chunk_points.shape))
-        print("labels: {} -> {}".format(label.shape, logit_labels.shape))
-        print("chunks: ", chunk_ind.shape)
-
-        if not args.less:
-            print("Loading 3D space ..")
-            result = draw_point_cloud(
-                chunk_points, label2color(logit_labels, style="nyu40_raw")
+            logging.info("Creating point cloud")
+            mvpnet_segmented_pt = draw_point_cloud(
+                np.asarray(label_point_cloud.points), label2color(scene_predicted_labels)
             )
-            o3d.visualization.draw_geometries([result], width=480, height=480)
 
-
-        if not args.save is False:
-            if not Path(args.save).parent.exists():
-                print("saving path {} is invalid !".format(args.save))
-                exit()
-
-            with open(args.save, "wb") as handle:
-                pickle.dump(predict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-                print("output saved into {}".format(args.save))
+            o3d.visualization.draw_geometries(
+                [mvpnet_segmented_pt], height=500, width=500
+            )
 
 
 if __name__ == "__main__":

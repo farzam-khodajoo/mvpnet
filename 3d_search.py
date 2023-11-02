@@ -1,3 +1,5 @@
+VOXEL_SIZE = 0.0001
+
 from collections import OrderedDict
 import os.path as osp
 import csv
@@ -234,6 +236,7 @@ def read_pc_from_ply(filename, return_color=False, return_label=False):
 
 
 def unproject(k, depth_map, mask=None):
+    print(max(np.unique(depth_map)))
     if mask is None:
         # only consider points where we have a depth value
         mask = depth_map > 0
@@ -414,7 +417,7 @@ def main():
             raise_path_error("report folder's .npy")
 
         pc = read_pc_from_ply(scene_ply[0])
-        pts_vis = draw_point_cloud(pc["points"])
+        pts_vis = draw_point_cloud(pc["points"]).voxel_down_sample(voxel_size=VOXEL_SIZE)
 
         bbox = np.load(bbox[0])
         overlap_point_cloud = draw_point_cloud(np.asarray(pts_vis.points)[bbox[:]])
@@ -458,6 +461,7 @@ def main():
     # load image
     color_image = Image.open(sample_color)
     color = np.array(color_image)
+    print("rgb", color.shape)
 
     # loading instrinsic data
     cam_matrix = np.loadtxt(sample_intrinsic_depth, dtype=np.float32)
@@ -473,6 +477,7 @@ def main():
     unproj_pts = unproject(cam_matrix, depth)
     unproj_pts = pose[:3, :3].dot(unproj_pts[:, :3].T).T + pose[:3, 3]
     masked_unproj_pts = None
+
 
     logging.info("project cloud shape: {}".format(unproj_pts.shape))
 
@@ -494,6 +499,8 @@ def main():
             cam_matrix=cam_matrix,
             depth_scale_factor=1000.0,
         )
+
+        save_into_pickle(data, "batch.data.pickle")
 
         # create label mapping
         all_class_ids = Path.cwd() / "mvpnet/data/meta_files/labelids.txt"
@@ -637,7 +644,11 @@ def main():
             logging.info("Loading 2D Resnet segmentation")
             resnet_output = fusion_features["2d_logit"].squeeze(0).detach().numpy().T
             resnet_output = np.argmax(resnet_output, axis=2)
-            plt.imshow(resnet_output)
+            width_size, height_size = resnet_output.shape
+            resnet_output = np.rot90(resnet_output, k=1)
+            flipped_resnet_output = np.flip(resnet_output, axis=1)
+            flipped_resnet_output = np.flip(resnet_output, axis=0)
+            plt.imshow(flipped_resnet_output)
             plt.show()
 
             logging.info("Loading depth map projection")
@@ -650,7 +661,7 @@ def main():
 
             mvpnet_segmented_pt = draw_point_cloud(
                 unproj_pts, label2color(scene_predicted_labels)
-            )
+            ).voxel_down_sample(voxel_size=VOXEL_SIZE)
 
             logging.info("Loading segmented view from mvpnet")
             o3d.visualization.draw_geometries(
@@ -682,11 +693,11 @@ def main():
     # visualize projection before proceed search
     logging.info("Loading pre-view of original projection")
     unproj_pts_vis = draw_point_cloud(unproj_pts)
-    o3d.visualization.draw_geometries([unproj_pts_vis], height=500, width=500)
 
+    o3d.visualization.draw_geometries([unproj_pts_vis], height=500, width=500)
     if masked_unproj_pts is not None:
         logging.info("Loading pre-view of masked projection")
-        masked_unproj_pts_vis = draw_point_cloud(masked_unproj_pts)
+        masked_unproj_pts_vis = draw_point_cloud(masked_unproj_pts, colors=color/255.)
         o3d.visualization.draw_geometries(
             [masked_unproj_pts_vis], height=500, width=500
         )
@@ -797,15 +808,16 @@ def main():
             / "{}_vh_clean_2.ply".format(result_scan_id)
         )
     
-    scene_ply = read_pc_from_ply(scene)
-    scene_point_cloud = draw_point_cloud(scene_ply["points"])
+    scene_ply = read_pc_from_ply(scene, return_color=True)
+    scene_colors = scene_ply["colors"] / 255.
+    scene_point_cloud = draw_point_cloud(scene_ply["points"], colors=scene_colors)
     overlap_point_cloud = draw_point_cloud(
         np.asarray(scene_point_cloud.points)[result_overlap[:]]
     )
 
     bbox = create_bounding_box(overlap_point_cloud)
     logging.info("Result shown from scene {}".format(result_scan_id))
-    o3d.visualization.draw_geometries([bbox, scene_point_cloud], height=500, width=500)
+    o3d.visualization.draw_geometries([bbox, scene_point_cloud.voxel_down_sample(voxel_size=VOXEL_SIZE)], height=500, width=500)
 
     logging.info("Writing into {}".format(save_dir))
     o3d.io.write_point_cloud(
@@ -856,11 +868,14 @@ def main():
         logging.info("Creating point cloud")
         mvpnet_segmented_pt = draw_point_cloud(
             np.asarray(scene_point_cloud.points), label2color(scene_predicted_labels)
-        )
+        ).voxel_down_sample(voxel_size=VOXEL_SIZE)
 
         o3d.visualization.draw_geometries(
             [bbox, mvpnet_segmented_pt], height=500, width=500
         )
+        
+
+    
         
 
 if __name__ == "__main__":
