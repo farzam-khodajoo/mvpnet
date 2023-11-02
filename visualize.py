@@ -145,7 +145,6 @@ def main():
             print(scanid)
         exit()
 
-    print(args.predict)
 
     if args.list is None and args.id is None:
         print("[Error] either use --list or --id")
@@ -168,9 +167,7 @@ def main():
         o3d.visualization.draw_geometries([result], width=480, height=480)
 
     if args.predict or args.load is not False:
-        model_config = str(
-            Path.cwd() / "configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml"
-        )
+        model_config = Path.cwd() / "configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml"
 
         if not model_config.exists():
             raise_path_error("pn2ssg config file", model_config)
