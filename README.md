@@ -124,7 +124,16 @@ this script needs `dataset/2d_scannet`. make sure you already completed section 
 
 ### 3D search without MVPNet, for single inference sample:
 `python 3d_search.py --target /path/to/samples/684`
+
+(in case of problem, consider intalling pandas: `pip install pandas`)
+
 - `--target` path to one of the generated samples, the `684` represent one of the samples' directory name
+  
+Note: in case you want to find best candidates with maximum RMSE instead of minimum, use `--rmse-max` :
+
+- `python 3d_search.py --target /path/to/samples/684 --rmse-max`
+  
+also the score report will be saved into `/path/to/samples/684/report/rmse.csv` for further use.
 
 ### 3D search with MVPNet, for single inference sample:
 `python 3d_search.py --target /path/to/samples/684 --mvpnet --label cabinet`
