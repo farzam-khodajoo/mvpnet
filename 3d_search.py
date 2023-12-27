@@ -386,6 +386,12 @@ def main():
         default=False,
         help="visualize saved report",
     )
+    parser.add_argument(
+        "--rmse-max",
+        action="store_true",
+        default=False,
+        help="sort candidates based on maximum rmse",
+    )
     args = parser.parse_args()
 
     if args.dataset is not None:
@@ -774,14 +780,14 @@ def main():
 
     logging.info("Sorting results")
     query_distances = [dis for dis in knn_distances.keys()]
-    min_distance = min(query_distances)
+    min_distance = max(query_distances) if args.rmse_max else min(query_distances)
 
     nearest_result = knn_distances[min_distance]
     result_scan_id = nearest_result["id"]
     result_overlap = nearest_result["overlap"]
     logging.info("Found #1 first candidate {} with RMSE of {}".format(result_scan_id, min_distance))
 
-    query_distances.sort()
+    query_distances.sort(reverse=True if args.rmse_max else False)
     second_min_distance = query_distances
     second_min_distance = second_min_distance[1] # [0] will be first
 
@@ -824,6 +830,28 @@ def main():
         str(save_dir / "{}.ply".format(result_scan_id)), scene_point_cloud
     )
     np.save(save_dir / "{}_lines".format(result_scan_id), result_overlap)
+
+    # saving rmse results into report/rmse.csv
+    logging.info("Getting RMSE report..")
+    import pandas as pd
+
+    rmse_report_context = {
+        "space_id": [],
+        "rmse_score": []
+    }
+
+    for rmse_score in knn_distances.keys():
+        room_name = knn_distances[rmse_score]["id"]
+        rmse_report_context["space_id"].append(room_name)
+        rmse_report_context["rmse_score"].append(rmse_score)
+
+
+    rmse_df = pd.DataFrame(rmse_report_context)
+    print(rmse_df.to_markdown())
+
+    rmse_report_save_destination = save_dir / "rmse.csv"
+    logging.info("Sasving RMSE report into {}".format(rmse_report_save_destination))
+    rmse_df.to_csv(rmse_report_save_destination)
 
     # save center xyz into file
     with open(save_dir / "position.txt", "w") as file:
