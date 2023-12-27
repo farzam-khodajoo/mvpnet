@@ -138,6 +138,19 @@ this script needs `dataset/2d_scannet`. make sure you already completed section 
 - `--keep` how many samples to load and run tests
 - `--skip` how many to skip between samples in querying
 
+## Getting segmentation for whole scene
+follow this instructions:
+- pick one sample from `mvpnet/data/meta_files/scannetv2_val.txt`, which in my case is `scene0018_00`
+- if you haven't already run cache for validation pickles, run this:
+  - `python .\mvpnet\data\preprocess\preprocess.py -s val -o ..\dataset\scannet\pickles\ --rgbd`
+  - note that we do need validation pickle for segmentation
+- now the final command:
+  - `python .\visualize.py --id scene0018_00 --predict`
+  - running this script will result to pop up two windows on after another,
+  - first one is the **Ground truch** for `scene0018_00`
+  - and the second one is `MVPNet segmentation` for that scene.
+  
+
 ## License
 The code is released under the MIT license.
 Copyright (c) 2019
