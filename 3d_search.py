@@ -284,6 +284,7 @@ def create_bounding_box(pts):
         [6, 7],
     ]
 
+    
     line_set = o3d.geometry.LineSet()
     line_set.points = o3d.utility.Vector3dVector(corners)
     line_set.lines = o3d.utility.Vector2iVector(lines)
@@ -797,17 +798,20 @@ def main():
     result_overlap = nearest_result["overlap"]
     logging.info("Found #1 first candidate {} with RMSE of {}".format(result_scan_id, min_distance))
 
-    query_distances.sort(reverse=True if args.rmse_max else False)
-    second_min_distance = query_distances
-    second_min_distance = second_min_distance[1] # [0] will be first
 
-    if query_distances[0] != min_distance:
-        logging.error("Result sorting mismatching")
-        exit()
+    if len(knn_distances) >= 2:
+        
+        query_distances.sort(reverse=True if args.rmse_max else False)
+        second_min_distance = query_distances
+        second_min_distance = second_min_distance[1] # [0] will be first
 
-    second_nearest_result = knn_distances[second_min_distance]
-    second_scan_id = second_nearest_result["id"]
-    logging.info("Found #2 second candidate {} with RMSE of {}".format(second_scan_id, second_min_distance))
+        if query_distances[0] != min_distance:
+            logging.error("Result sorting mismatching")
+            exit()
+
+        second_nearest_result = knn_distances[second_min_distance]
+        second_scan_id = second_nearest_result["id"]
+        logging.info("Found #2 second candidate {} with RMSE of {}".format(second_scan_id, second_min_distance))
 
 
     if args.dataset is not None:
@@ -833,7 +837,7 @@ def main():
         np.asarray(scene_point_cloud.points)[result_overlap[:]], colors=target_fixed_color
     )
 
-    bbox = create_bounding_box(overlap_point_cloud)
+    bbox: o3d.geometry.LineSet = create_bounding_box(overlap_point_cloud)
 
     logging.info("Result shown from scene {}".format(result_scan_id))
     o3d.visualization.draw_geometries([bbox, set_color_for_overlaps_in_scene(
