@@ -294,6 +294,16 @@ def create_bounding_box(pts):
     )
     return line_set
 
+def set_color_for_overlaps_in_scene(scene_pts, scene_colors, overlap_pts, color):
+    """Change a set of point in scene to specific color,
+        this is used along with bounding box for segmented object
+    """
+    points_insize_bbox = np.all((overlap_pts.get_min_bound() <= scene_pts.points) & (scene_pts.points <= overlap_pts.get_max_bound()), axis=1)
+    scene_colors[points_insize_bbox] = color
+    scene_pts.colors = o3d.utility.Vector3dVector(scene_colors)
+
+    return scene_pts
+
 
 def main():
     global SCANNET_DIRECTORY
@@ -814,16 +824,24 @@ def main():
             / "{}_vh_clean_2.ply".format(result_scan_id)
         )
     
+
+    target_fixed_color = [0.7, 0.2, 0.1]
     scene_ply = read_pc_from_ply(scene, return_color=True)
     scene_colors = scene_ply["colors"] / 255.
     scene_point_cloud = draw_point_cloud(scene_ply["points"], colors=scene_colors)
     overlap_point_cloud = draw_point_cloud(
-        np.asarray(scene_point_cloud.points)[result_overlap[:]]
+        np.asarray(scene_point_cloud.points)[result_overlap[:]], colors=target_fixed_color
     )
 
     bbox = create_bounding_box(overlap_point_cloud)
+
     logging.info("Result shown from scene {}".format(result_scan_id))
-    o3d.visualization.draw_geometries([bbox, scene_point_cloud.voxel_down_sample(voxel_size=VOXEL_SIZE)], height=500, width=500)
+    o3d.visualization.draw_geometries([bbox, set_color_for_overlaps_in_scene(
+        scene_pts=scene_point_cloud,
+        scene_colors=scene_colors,
+        overlap_pts=overlap_point_cloud,
+        color=target_fixed_color
+    )], height=500, width=500)
 
     logging.info("Writing into {}".format(save_dir))
     o3d.io.write_point_cloud(
@@ -860,7 +878,8 @@ def main():
         file.write(f"{centroid[0]}\n{centroid[1]}\n{centroid[2]}")
 
 
-    if args.mvpnet:
+    """
+        if args.mvpnet:
         logging.info("Loading MVPNet segmentation for entire scene {}".format(result_scan_id))
         cache_dir = Path(ROOT_DIRECTORY) / "pickles"
         image_dir = Path(ROOT_DIRECTORY) / "scans_resize_160x120"
@@ -899,10 +918,10 @@ def main():
         ).voxel_down_sample(voxel_size=VOXEL_SIZE)
 
         o3d.visualization.draw_geometries(
-            [bbox, mvpnet_segmented_pt], height=500, width=500
+            [bbox, overlap_point_cloud], height=500, width=500
         )
         
-
+    """
     
         
 
