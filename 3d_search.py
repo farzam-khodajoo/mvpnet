@@ -714,7 +714,7 @@ def main():
     o3d.visualization.draw_geometries([unproj_pts_vis], height=500, width=500)
     if masked_unproj_pts is not None:
         logging.info("Loading pre-view of masked projection")
-        masked_unproj_pts_vis = draw_point_cloud(masked_unproj_pts, colors=color/255.)
+        masked_unproj_pts_vis = draw_point_cloud(masked_unproj_pts)
         o3d.visualization.draw_geometries(
             [masked_unproj_pts_vis], height=500, width=500
         )
@@ -800,7 +800,7 @@ def main():
 
 
     if len(knn_distances) >= 2:
-        
+
         query_distances.sort(reverse=True if args.rmse_max else False)
         second_min_distance = query_distances
         second_min_distance = second_min_distance[1] # [0] will be first
