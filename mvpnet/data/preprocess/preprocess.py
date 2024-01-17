@@ -229,20 +229,19 @@ def process_scan_3d_sem_seg(scan_id, is_test=False, compute_rgbd_overlap=False, 
     data_dict['points'] = pc['points']  # float32
     data_dict['colors'] = pc['colors']  # uint8
 
-    if not is_test:
-        pc_label = read_pc_from_ply(paths['label_3d'], return_label=True)
-        try:
-            np.testing.assert_allclose(pc['points'], pc_label['points'])
-        except AssertionError:
-            print(scan_id, 'mismatch points and labels.')
+    pc_label = read_pc_from_ply(paths['label_3d'], return_label=True)
+    try:
+        np.testing.assert_allclose(pc['points'], pc_label['points'])
+    except AssertionError:
+        print(scan_id, 'mismatch points and labels.')
 
-        # scene0270_00 and scene0384_00 have bad labels (50 and 149)
-        label_3d = pc_label['label']  # uint16
-        bad_label_ind = np.logical_or(label_3d < 0, label_3d > 40)
-        if bad_label_ind.any():
-            print(scan_id, 'bad labels: {}.'.format(np.unique(label_3d[bad_label_ind], return_counts=True)))
-            label_3d[bad_label_ind] = 0
-        data_dict['seg_label'] = label_3d
+    # scene0270_00 and scene0384_00 have bad labels (50 and 149)
+    label_3d = pc_label['label']  # uint16
+    bad_label_ind = np.logical_or(label_3d < 0, label_3d > 40)
+    if bad_label_ind.any():
+        print(scan_id, 'bad labels: {}.'.format(np.unique(label_3d[bad_label_ind], return_counts=True)))
+        label_3d[bad_label_ind] = 0
+    data_dict['seg_label'] = label_3d
 
     if compute_rgbd_overlap:
         # get frames in scan
@@ -325,8 +324,6 @@ def main():
 
     if args.output_dir is not None:
         output_path = osp.join(output_dir, 'scannetv2_{}.pkl'.format(args.split))
-        if args.all:
-            output_path = osp.join(output_dir, 'scannetv2_all.pkl')
         print('Save to {}'.format(osp.abspath(output_path)))
         with open(output_path, 'wb') as f:
             pickle.dump(res, f, protocol=pickle.HIGHEST_PROTOCOL)

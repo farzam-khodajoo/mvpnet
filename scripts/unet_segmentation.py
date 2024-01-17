@@ -45,7 +45,7 @@ from utils.inference import (
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--scene",
+        "--image",
         type=str,
         required=False,
         help="the target scene id",
@@ -63,12 +63,12 @@ def main():
         help="save segmentation result into pickle",
     )
     parser.add_argument(
-        "--list-all",
-        action="store_true",
-        default=False,
-        help="get list of all available scene ids",
+        "--label",
+        type=str,
+        required=False,
+        help="only show segmentation for specific label",
     )
-    
+
     args = parser.parse_args()
 
     pickle_directory = Path(ROOT_DIRECTORY)/"pickles"
@@ -80,54 +80,22 @@ def main():
     if not scan_directory.exists():
         raise_path_error("Scan directory", pickle_directory)
 
-    if args.list_all:
 
-        k = 3
-        num_views = 5
-        min_nb_pts = 2048
-        test_dataset = ScanNet2D3DChunksTest(
-            cache_dir=str(pickle_directory),
-            image_dir=str(scan_directory),
-            split="test",
-            chunk_size=[1.5, 1.5],
-            chunk_stride=0.5,
-            chunk_thresh=1000,
-            num_rgbd_frames=num_views,
-            resize=(160, 120),
-            image_normalizer=((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-            k=k,
-            to_tensor=True,
-        )
-
-        scan_ids_table = PrettyTable()
-        scan_ids_table.hrules = ALL
-        scan_ids_table.field_names = ["Available scan IDs"]
-        for scan_id in test_dataset.scan_ids:
-            scan_ids_table.add_row([scan_id])
-
-        print(scan_ids_table)
-
-    if args.scene:
-
-        scene = Path(SCANNET_DIRECTORY) / args.scene / "{}_vh_clean_2.ply".format(args.scene)
-
-        if not scene.exists():
-            raise_path_error("Scene", scene)
-
-        scene_ply = PLYFormat.read_pc_from_ply(scene, return_color=True)
-        scene_colors = scene_ply["colors"] / 255.
-        scene_point_cloud = draw_point_cloud(scene_ply["points"], colors=scene_colors)
+    if args.image:
+        image = Path(args.image)
+        if not image.exists():
+            raise_path_error("image", image)
 
         if args.load:
-            (points, prediction_labels) = Pickle.load_from_pickle(args.load)
+            prediction_labels_context = Pickle.load_from_pickle(args.load)
 
         else:
-            from utils.inference import inference_mvpnet
-            points, prediction_labels = inference_mvpnet(target_scene_id=args.scene)
+            from utils.inference import inference_2d
+            prediction_labels_context = inference_2d(image_path=image)
 
         all_class_ids = Path.cwd() / "mvpnet/data/meta_files/labelids.txt"
         label_dict = load_class_mapping(all_class_ids)   
-        labels_in_scene = np.unique(prediction_labels)
+        labels_in_scene = np.unique(prediction_labels_context)
 
         all_label_names = get_available_labels(labels_in_scene, label_dict)
 
@@ -140,13 +108,21 @@ def main():
         print(label_table)
 
         logging.info("Loading Segmentation window..")
-        visualize_labels(points, prediction_labels, window_name="MVPNet segmentation for {}".format(args.scene))
+        from mvpnet.utils.visualize import label2color
 
+        width_size, height_size = prediction_labels_context.shape
+        prediction_labels = np.rot90(prediction_labels_context, k=1)
+        flipped_prediction_labels = np.flip(prediction_labels, axis=1)
+        flipped_prediction_labels = np.flip(prediction_labels, axis=0)
+        import matplotlib.pyplot as plt
+        plt.imshow(flipped_prediction_labels)
+        plt.show()
+        
         if args.save:
             if not Path(args.save).parent.exists():
                 raise_path_error("Parent folder", args.save)
             
-            Pickle.save_into_pickle((points, prediction_labels), path=Path(args.save))
+            Pickle.save_into_pickle(prediction_labels_context, path=Path(args.save))
 
 if __name__ == "__main__":
     main()

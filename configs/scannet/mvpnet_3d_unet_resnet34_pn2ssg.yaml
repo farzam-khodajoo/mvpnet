@@ -24,7 +24,7 @@ DATASET:
       flip: 0.5
       color_jitter: (0.4, 0.4, 0.4)
 DATALOADER:
-  NUM_WORKERS: 6
+  NUM_WORKERS: 0
 OPTIMIZER:
   TYPE: "Adam"
   BASE_LR: 0.002
@@ -38,7 +38,7 @@ TRAIN:
   BATCH_SIZE: 32
   LOG_PERIOD: 50
   SUMMARY_PERIOD: 50
-  CHECKPOINT_PERIOD: 1000
+  CHECKPOINT_PERIOD: 1
   MAX_TO_KEEP: 2
   FROZEN_PATTERNS: ("module:net_2d", "net_2d")
   LABEL_WEIGHTS_PATH: "mvpnet/data/meta_files/scannetv2_train_3d_log_weights_20_classes.txt"

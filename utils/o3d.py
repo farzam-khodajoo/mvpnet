@@ -149,7 +149,7 @@ class Common3D:
 
         # Set line colors (optional)
         line_set.colors = o3d.utility.Vector3dVector(
-            np.array([[1, 0, 0] for _ in range(len(lines))])
+            np.array([[0, 1, 0] for _ in range(len(lines))])
         )
         return line_set
 
@@ -161,7 +161,6 @@ class Common3D:
         points_insize_bbox = np.all((overlap_pts.get_min_bound() <= scene_pts.points) & (scene_pts.points <= overlap_pts.get_max_bound()), axis=1)
 
         if scene_colors.shape[1] == 3:
-            color_space = scene_colors[points_insize_bbox]
             scene_colors[points_insize_bbox] = color
             scene_pts.colors = o3d.utility.Vector3dVector(scene_colors)
 
@@ -169,4 +168,11 @@ class Common3D:
             scene_colors[points_insize_bbox] = color
             scene_pts.colors = o3d.utility.Vector3dVector(scene_colors)
 
+        return scene_pts
+    
+    @staticmethod
+    def set_labels_for_overlaps_in_scene(scene_pts, scene_colors, overlap_pts, color_space):
+        points_insize_bbox = np.all((overlap_pts.get_min_bound() <= scene_pts.points) & (scene_pts.points <= overlap_pts.get_max_bound()), axis=1)
+        scene_colors[points_insize_bbox] = color_space[points_insize_bbox]
+        scene_pts.colors = o3d.utility.Vector3dVector(scene_colors)
         return scene_pts

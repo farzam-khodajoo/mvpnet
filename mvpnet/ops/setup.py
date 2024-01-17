@@ -19,7 +19,7 @@ setup(
                 'cuda/fps.cpp',
                 'cuda/fps_kernel.cu',
             ],
-            extra_compile_args={'cxx': ['-g'], 'nvcc': ['-O0']}
+            extra_compile_args={'cxx': ['-g', '/Ox'], 'nvcc': ['-O0']}
         ),
         CUDAExtension(
             name='group_points_cuda',
@@ -27,7 +27,7 @@ setup(
                 'cuda/group_points.cpp',
                 'cuda/group_points_kernel.cu',
             ],
-            extra_compile_args={'cxx': ['-g'], 'nvcc': ['-O0']}
+            extra_compile_args={'cxx': ['-g', '/Ox'], 'nvcc': ['-O0']}
         ),
         CUDAExtension(
             name='ball_query_cuda',
@@ -35,7 +35,7 @@ setup(
                 'cuda/ball_query.cpp',
                 'cuda/ball_query_kernel.cu',
             ],
-            extra_compile_args={'cxx': ['-g'], 'nvcc': ['-O0']}
+            extra_compile_args={'cxx': ['-g', '/Ox'], 'nvcc': ['-O0']}
         ),
         CUDAExtension(
             name='ball_query_distance_cuda',
@@ -43,7 +43,7 @@ setup(
                 'cuda/ball_query_distance.cpp',
                 'cuda/ball_query_distance_kernel.cu',
             ],
-            extra_compile_args={'cxx': ['-g'], 'nvcc': ['-O0']}
+            extra_compile_args={'cxx': ['-g', '/Ox'], 'nvcc': ['-O0']}
         ),
         CUDAExtension(
             name='knn_distance_cuda',
@@ -51,7 +51,7 @@ setup(
                 'cuda/knn_distance.cpp',
                 'cuda/knn_distance_kernel.cu',
             ],
-            extra_compile_args={'cxx': ['-g'], 'nvcc': ['-O0']}
+            extra_compile_args={'cxx': ['-g', '/Ox'], 'nvcc': ['-O0']}
         ),
         CUDAExtension(
             name='interpolate_cuda',
@@ -59,7 +59,7 @@ setup(
                 'cuda/interpolate.cpp',
                 'cuda/interpolate_kernel.cu',
             ],
-            extra_compile_args={'cxx': ['-g'], 'nvcc': ['-O0']}
+            extra_compile_args={'cxx': ['-g', '/Ox'], 'nvcc': ['-O0']}
         ),
     ],
     cmdclass={

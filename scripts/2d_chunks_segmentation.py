@@ -109,7 +109,7 @@ def main():
 
     if args.scene:
 
-        scene = Path(SCANNET_DIRECTORY) / args.scene / "{}_vh_clean_2.ply".format(args.scene)
+        scene = scan_directory / args.scene / "{}_vh_clean_2.ply".format(args.scene)
 
         if not scene.exists():
             raise_path_error("Scene", scene)
@@ -122,8 +122,8 @@ def main():
             (points, prediction_labels) = Pickle.load_from_pickle(args.load)
 
         else:
-            from utils.inference import inference_mvpnet
-            points, prediction_labels = inference_mvpnet(target_scene_id=args.scene)
+            from utils.inference import inference_2d_chunks
+            points, prediction_labels = inference_2d_chunks(target_scene_id=args.scene)
 
         all_class_ids = Path.cwd() / "mvpnet/data/meta_files/labelids.txt"
         label_dict = load_class_mapping(all_class_ids)   
@@ -140,7 +140,7 @@ def main():
         print(label_table)
 
         logging.info("Loading Segmentation window..")
-        visualize_labels(points, prediction_labels, window_name="MVPNet segmentation for {}".format(args.scene))
+        visualize_labels(points, prediction_labels, window_name="2D chunk segmentation")
 
         if args.save:
             if not Path(args.save).parent.exists():

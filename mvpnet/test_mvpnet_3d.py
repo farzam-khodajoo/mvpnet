@@ -155,7 +155,7 @@ def test(cfg, args, output_dir='', run_name=''):
 
                 data_batch = {k: torch.tensor([v]) for k, v in data_dict.items()}
                 data_batch = {k: v.cuda(non_blocking=True) for k, v in data_batch.items()}
-                # forward
+                # forward 
                 preds = model(data_batch)
                 seg_logit = preds['seg_logit'].squeeze(0).cpu().numpy().T
                 seg_logit = seg_logit[:len(chunk_ind)]

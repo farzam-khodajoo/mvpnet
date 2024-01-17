@@ -5,6 +5,13 @@ import zipfile
 from pathlib import Path
 import sys
 
+extend_path = os.getcwd()
+if sys.platform == "win32":
+    extend_path = extend_path.replace("/", "\\")
+
+sys.path.append(extend_path)
+
+
 from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 
 DATASET_DIRECTORY = SCANNET_DIRECTORY

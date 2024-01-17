@@ -5,6 +5,16 @@ import shutil
 from tqdm import tqdm
 import argparse
 
+import sys
+import os
+is_windows = sys.platform == "win32"
+
+extend_path = os.getcwd()
+if is_windows:
+    extend_path = extend_path.replace("/", "\\")
+
+sys.path.append(extend_path)
+
 from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 
 import logging

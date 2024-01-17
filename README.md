@@ -1,5 +1,4 @@
 # MVPNet: Multi-view PointNet for 3D Scene Understanding
-![](./mvpnet_pipeline.png)
 
 If you find our work useful, please cite our [paper](https://arxiv.org/abs/1909.13603):
 ```
@@ -11,154 +10,181 @@ If you find our work useful, please cite our [paper](https://arxiv.org/abs/1909.
 }
 ```
 
-## Pre-requisites
-- Python 3.6
-- Pytorch 1.2.0
-- CUDA 10.0 & CUDNN 7.6.4
+# Quick Access
+[1. Setup CUDA](#compile-cuda-scripts)\
+[2. Preprocessing Data (Scannet Dataset)](#data-preprocessing)\
+[3. Train and Test](#train)\
+[4. Running scripts](#scripts)
 
-## Setup
-create mvpnet enviroment:
-`conda create --file environment.yml` </br>
-<bold>Note:</bold> if you ran into dependencies problem during installation, try this:
-```bash
-conda create --name mvpnet
-conda activate mvpnet
-pip install torch==1.3.0+cu100 torchvision -f https://download.pytorch.org/whl/torch_stable.html
-pip install future setuptools==59.5.0  yacs numpy scipy scikit-learn h5py tqdm cython natsort tabulate pytest opencv-python matplotlib plyfile
-```
+# Compile CUDA scripts
 
-create py27 enviroment (only to create 2D dataset)
-```bash
-conda create --name py27
-conda activate py27
-pip install --quiet numpy  imageio==1.4 opencv-python==4.2.0.32
-```
+this is required only if you 1. have nvidia graphic card on your device 2. you want to run MVPNet model.
 
-## Compile CUDA scripts (requires CUDA)
 ```bash
 conda activate mvpnet
 cd mvpnet/ops/
 python setup.py build_ext --inplace
 ```
 
-## Create 2D dataset `scannet/2d_scannet`
-this script runs on python2.7
+# Data Preprocessing
+
+this script requires python2.7 or similar :
 ```bash
 conda activate py27
-python ./custome_extractor.py
+# Note: run this commands at repo's root directory
+# this will generate 2D dataset.
+python ./preprocessing/custome_extractor.py
 ```
-## Resize and create final dataset `scannet/scans_resize_160_120`
+the result of the process requires a typical python3 enviroment :
 ```bash
+# check envirment.yaml to generate mvpnet env.
 conda activate mvpnet
-python ./custome_resize_scannet.py
+
+# inject 2D labels into 2D dataset
+python ./preprocessing/custome_label_injection.py
+# resize entire 2D dataset into 120x160
+python ./preprocessing/custome_resize_scannet.py
+# copy all required data from scan's dataset into resized directory
+python ./preprocessing/final_injection.py
+
+# generate pickle files (for caching purpose)
+# kindly note that the "pickles" folder should already exists
+python mvpnet/data/preprocess/preprocess.py -o ../dataset/pickles -s train --rgbd
+
+python mvpnet/data/preprocess/preprocess.py -o ../dataset/pickles -s val --rgbd
+
+python mvpnet/data/preprocess/preprocess.py -o ../dataset/pickles -s test --rgbd --all
 ```
 
-### Finalize data
-run this before running any train/test script
-```bash
-conda activate mvpnet
-python ./final_injection.py
-```
+# Train
+first head to `./configs` folder and change parameters.
 
-## Create pickle cache files
-result of these scripts will be saved into `dataset/pickles`
-
-- for train:
-
-`python mvpnet/data/preprocess/preprocess.py -o /content/dataset/pickles -s train --rgbd`
-
-- for validation:
-
-`python mvpnet/data/preprocess/preprocess.py -o /content/dataset/pickles -s val --rgbd`
-
-- for test (alittle more tricky):
-
-`python mvpnet/data/preprocess/preprocess.py -o /content/dataset/pickles -s val --rgbd --all`
-
-
-last script will create a file named `scannetv2_all.pickle` in `dataset/pickles`, please manually rename this file into `scannetv2_test.pickle`
-
-
-## Train
 train 2D model (Resnet34):
 
 ```bash
 conda activate mvpnet
-python mvpnet/train_2d.py --cfg configs/scannet/unet_resnet34.yaml
+python mvpnet/train_2d.py --cfg configs/scannet/unet_resnet34.yaml --split train
 ```
 
 train MVPNet model (2D + feature aggregation + 3D)
 
 ```bash
-python mvpnet/train_mvpnet_3d.py --cfg configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml --epochs 20
+python mvpnet/train_mvpnet_3d.py --cfg configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml --epochs 20 --split train
 ```
 
 change `--epoch 20` if you like to train more.
 
-## Test
+# Test
 test 2D model on 2D labels:
 
-`python mvpnet/test_2d.py --cfg configs/scannet/unet_resnet34.yaml`
+`python mvpnet/test_2d.py --cfg configs/scannet/unet_resnet34.yaml --split test`
 
 test 2D model on 3D chunks:
 
-`python mvpnet/test_2d_chunks.py --cfg configs/scannet/unet_resnet34.yaml --cache-dir /content/dataset/pickles --image-dir /content/dataset/scans_resize_160x120`
+`python mvpnet/test_2d_chunks.py --cfg configs/scannet/unet_resnet34.yaml --cache-dir /content/dataset/pickles --image-dir /content/dataset/scans_resize_160x120 --split test`
 
 test MVPNet model:
 
-`python mvpnet/test_mvpnet_3d.py --cfg configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml  --num-views 5 --cache-dir /content/dataset/pickles --image-dir /content/dataset/scans_resize_160x120`
+`python mvpnet/test_mvpnet_3d.py --cfg configs/scannet/mvpnet_3d_unet_resnet34_pn2ssg.yaml  --num-views 5 --cache-dir /content/dataset/pickles --image-dir /content/dataset/scans_resize_160x120 --split test`
 
-## Visualize
-### Ground Truth from single scene:
-
-`python visualize.py --id scene0018_00`
-
-value for `--id` will be loaded from  scannet directory path or the path defined in `SCANNET_DIRECTORY`, only copy and paste to sample folder name.
-
-### generate inference samples:
+# Scripts
+## 1. Generate inference samples
 `python generate_random_scenes.py --save_dir /somewhere/path/ --count 10`
 - `--count` how many samples to generate
 - `--save-dir` where to save samples
 
 this script needs `dataset/2d_scannet`. make sure you already completed section regarding to create 2D dataset
 
-### 3D search without MVPNet, for single inference sample:
-`python 3d_search.py --target /path/to/samples/684`
+## 2. Ground Truth from single scene
+<img src="statics/scene_ground_truth.png" width="300">
+
+first list all available samples that could be viewed:
+
+`python ./scripts/scene_ground_truth.py --list-all`
+
+you'll get something like this printed out in your terminal:
+```
++--------------------+
+| Available scan IDs |
++--------------------+
+|    scene0000_00    |
++--------------------+
+|    scene0011_00    |
++--------------------+
+|    scene0018_00    |
++--------------------+
+|    scene0031_02    |
++--------------------+
+|    scene0447_02    |
++--------------------+
+```
+
+now view ground truth from one of the samples listed above:
+
+`python .\scripts\scene_ground_truth.py --scene scene0000_00`
+
+## 3. Object spot using KNN
+<p float="left">
+  <img src="statics/3d_search.png" width="250"/>
+  <img src="statics/4464.jpg" width="300"/> 
+</p>
+
+```bash
+python ./scripts/3d_search.py --target /path/to/samples/684
+```
 
 (in case of problem, consider intalling pandas: `pip install pandas`)
 
-- `--target` path to one of the generated samples, the `684` represent one of the samples' directory name
+> `--target` will get the path of generated sample; `684` represent one of the samples' directory name
   
-Note: in case you want to find best candidates with maximum RMSE instead of minimum, use `--rmse-max` :
+> Note: in case you want to find best candidates with maximum RMSE instead of minimum, use `--rmse-max` :
 
-- `python 3d_search.py --target /path/to/samples/684 --rmse-max`
+```bash
+python ./scripts/3d_search.py --target /path/to/samples/684 --rmse-max
+```
   
 also the score report will be saved into `/path/to/samples/684/report/rmse.csv` for further use.
+ 
+## 4. Object spot will Segmentation included
+<img src="statics/3d_mvpnet.png" height="300">
 
-### 3D search with MVPNet, for single inference sample:
-`python 3d_search.py --target /path/to/samples/684 --mvpnet --label cabinet`
+```bash
+python ./scripts/3d_search.py --target /path/to/samples/684 --mvpnet --load ./dataset/cache/scene0000_00.pickle
+```
 - `--target` same as before.
 - `--mvpnet` will segment unprojection using model
 - `--label` extract specific label from unprojection and remove the rest.
 
-## Test 3D search and get confusion matrix:
-`python query_search.py --label cabint`
-- `--label` run tests on specific label
-- `--keep` how many samples to load and run tests
-- `--skip` how many to skip between samples in querying
+## 5. Scene segmentation
+<img src="statics/mvpnet_seg.png" width="300">
 
-## Getting segmentation for whole scene
-follow this instructions:
-- pick one sample from `mvpnet/data/meta_files/scannetv2_val.txt`, which in my case is `scene0018_00`
-- if you haven't already run cache for validation pickles, run this:
-  - `python .\mvpnet\data\preprocess\preprocess.py -s val -o ..\dataset\scannet\pickles\ --rgbd`
-  - note that we do need validation pickle for segmentation
-- now the final command:
-  - `python .\visualize.py --id scene0018_00 --predict`
-  - running this script will result to pop up two windows on after another,
-  - first one is the **Ground truch** for `scene0018_00`
-  - and the second one is `MVPNet segmentation` for that scene.
-  
+```bash
+python ./scripts/mvpnet_segmentation.py --scene scene0000_00
+```
+
+if you already saved segmentation into pickle file, use:
+```bash
+python ./scripts/mvpnet_segmentation.py --scene scene0000_00 --load ./scene0000_00.pickle
+```
+## 6. Image's segmentation Ground Truth
+<p float="left">
+  <img src="statics/image_ground_truth.png" width="250"/>
+  <img src="statics/4464.jpg" width="300"/> 
+</p>
+
+```bash 
+python ./scripts/image_ground_truth.py --label ../dataset/scannet/cache/2d_labels/4464.png
+```
+
+## 7. Segmentation for 2D samples
+```bash
+python ./scripts/unet_segmentation.py --image ../inference/1334/1334.jpg --load ../dataset/scannet/cache/unet/1334.pickle
+```
+
+## 8. Scene segmentation with 2D chunks
+```bash
+python ./scripts/2d_chunks_segmentation.py --scene scene0000_00 --load ../dataset/scannet/cache/chunks/scene0000_00.pickle
+```
 
 ## License
 The code is released under the MIT license.

@@ -95,6 +95,7 @@ def test(cfg, args, output_dir='', run_name=''):
                                          k=args.k,
                                          to_tensor=True,
                                          )
+  
     test_dataloader = DataLoader(test_dataset,
                                  batch_size=1,
                                  shuffle=False,

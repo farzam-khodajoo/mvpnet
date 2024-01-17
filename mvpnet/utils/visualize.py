@@ -5,7 +5,7 @@ import open3d as o3d
 # Reference: https://github.com/ScanNet/ScanNet/blob/master/BenchmarkScripts/util.py
 NYU40_COLOR_PALETTE = [
     (0, 0, 0),
-    (174, 199, 232),  # wall
+    (255, 255, 255),  # wall
     (152, 223, 138),  # floor
     (31, 119, 180),  # cabinet
     (255, 187, 120),  # bed
@@ -83,6 +83,7 @@ def label2color(labels, colors=None, style='scannet'):
         raise KeyError('Unknown style: {}'.format(style))
     if colors is None:
         colors = np.zeros([labels.shape[0], 3])
+        colors.fill(255) # set default to all white (255, 255, 255)
         print("color: {}".format(colors.shape))
     else:
         assert colors.ndim == 2 and colors.shape[1] == 3
@@ -95,10 +96,9 @@ def label2color(labels, colors=None, style='scannet'):
 # ---------------------------------------------------------------------------- #
 # Visualize by labels
 # ---------------------------------------------------------------------------- #
-def visualize_labels(points, seg_label, colors=None, style='scannet'):
+def visualize_labels(points, seg_label, colors=None, style='scannet', window_name="Open3D"):
     pc = o3d.geometry.PointCloud()
     pc.points = o3d.utility.Vector3dVector(points[:, :3])
     pc.colors = o3d.utility.Vector3dVector(label2color(seg_label, colors, style=style))
     geometries = [pc]
-    geometries.append(o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0, origin=[0, 0, 0]))
-    o3d.visualization.draw_geometries(geometries)
+    o3d.visualization.draw_geometries(geometries, width=500, height=500, window_name=window_name)

@@ -664,6 +664,7 @@ class ScanNet2D3DChunksTest(ScanNet2D3DChunks):
                     out_dict["images"] = np.moveaxis(
                         out_dict["images"], -1, 1
                     )  # (nv, 3, h, w)
+                    
             out_dict_list.append(out_dict)
 
         return out_dict_list

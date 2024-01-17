@@ -41,11 +41,6 @@ from utils.o3d import (
     Common3D,
     unproject
 )
-from utils.inference import (
-    load_class_mapping,
-    get_available_labels,
-    inference_mvpnet
-)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -72,11 +67,11 @@ def main():
         help="using mvpnet for fusion segmentation",
     )
     parser.add_argument(
-        "--label",
+        "--load",
         type=str,
         required=False,
         default=None,
-        help="label to be segmented from mvpnet",
+        help="Load segmentation data from pickle file",
     )
     parser.add_argument(
         "--icp-threshold",
@@ -132,26 +127,6 @@ def main():
 
     # create report directory
     save_dir.mkdir(exist_ok=True)
-
-    if args.report:
-        scene_ply = glob(str(save_dir / "*.ply"))
-        bbox = glob(str(save_dir / "*.npy"))
-
-        if len(scene_ply) < 1:
-            raise_path_error("report folder's .ply")
-
-        if len(bbox) < 1:
-            raise_path_error("report folder's .npy")
-
-        pc = PLYFormat.read_pc_from_ply(scene_ply[0])
-        pts_vis = draw_point_cloud(pc["points"]).voxel_down_sample(voxel_size=VOXEL_SIZE)
-
-        bbox = np.load(bbox[0])
-        overlap_point_cloud = draw_point_cloud(np.asarray(pts_vis.points)[bbox[:]])
-        bbox = Common3D.create_bounding_box(overlap_point_cloud)
-        logging.info("Loading scene")
-        o3d.visualization.draw_geometries([bbox, pts_vis], height=500, width=500)
-        exit()
 
     # check color sample
     sample_color_glob = glob(str(target_dir / "*.jpg"))
@@ -347,7 +322,7 @@ def main():
 
     if not args.mvpnet:
         logging.info("Result shown from scene {}".format(result_scan_id))
-        o3d.visualization.draw_geometries([bbox, scene_with_fixed_overlap], height=500, width=500)
+        o3d.visualization.draw_geometries([bbox, scene_with_fixed_overlap], height=500, width=500, window_name="3D search result for {}".format(result_scan_id))
 
 
     logging.info("Writing into {}".format(save_dir))
@@ -384,10 +359,20 @@ def main():
         logging.info("Saving {} coordinate into {}".format(centroid, save_dir / "position.txt"))
         file.write(f"{centroid[0]}\n{centroid[1]}\n{centroid[2]}")
 
-
     if args.mvpnet:
-        from mvpnet.utils.visualize import visualize_labels
-        points, prediction_labels = inference_mvpnet()
+
+        from utils.inference import (
+            load_class_mapping,
+            get_available_labels
+        )
+
+        if args.load:
+            (points, prediction_labels) = Pickle.load_from_pickle(args.load)
+
+        else:
+            from utils.inference import inference_mvpnet
+            points, prediction_labels = inference_mvpnet(target_scene_id=result_scan_id)
+
         all_class_ids = Path.cwd() / "mvpnet/data/meta_files/labelids.txt"
         label_dict = load_class_mapping(all_class_ids)   
         labels_in_scene = np.unique(prediction_labels)
@@ -409,25 +394,15 @@ def main():
         print(label_table)
         #visualize_labels(points, prediction_labels)
 
-        if args.label:
-            index = list(label_dict.keys()).index(int(args.label))
-            target_indices = np.where(prediction_labels_inside_bbox == index)
-            color_space = label2color(prediction_labels)[target_indices]
-            scene_colors[target_indices] = color_space
-            scene_point_cloud.colors = o3d.utility.Vector3dVector(scene_colors)
-            o3d.visualization.draw_geometries([bbox, scene_point_cloud])
-
-
-        else:
-            scene_with_segmented_overlap = Common3D.set_color_for_overlaps_in_scene(
-                    scene_pts=scene_point_cloud,
-                    scene_colors=scene_colors,
-                    overlap_pts=overlap_point_cloud,
-                    color=label2color(prediction_labels)
-            )
-            
-            o3d.visualization.draw_geometries([bbox, scene_with_segmented_overlap], height=500, width=500)
+        scene_with_segmented_overlap = Common3D.set_labels_for_overlaps_in_scene(
+                scene_pts=scene_point_cloud,
+                scene_colors=scene_colors,
+                overlap_pts=overlap_point_cloud,
+                color_space=label2color(prediction_labels)
+        )
         
+        o3d.visualization.draw_geometries([bbox, scene_with_segmented_overlap], height=500, width=500, window_name="3D search result for {}".format(result_scan_id))
+    
 
 if __name__ == "__main__":
     main()

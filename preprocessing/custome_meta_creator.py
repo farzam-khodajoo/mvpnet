@@ -1,8 +1,15 @@
 from glob import glob
 import os
+import sys
 from os import path
 from pathlib import Path
 from random import shuffle
+
+extend_path = os.getcwd()
+if sys.platform == "win32":
+    extend_path = extend_path.replace("/", "\\")
+
+sys.path.append(extend_path)
 
 from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
 
