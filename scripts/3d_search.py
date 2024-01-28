@@ -74,6 +74,13 @@ def main():
         help="Load segmentation data from pickle file",
     )
     parser.add_argument(
+        "--label",
+        type=int,
+        required=False,
+        default=None,
+        help="Load segmentation data from pickle file",
+    )
+    parser.add_argument(
         "--icp-threshold",
         type=float,
         required=False,
@@ -378,31 +385,51 @@ def main():
         labels_in_scene = np.unique(prediction_labels)
 
         all_label_names = get_available_labels(labels_in_scene, label_dict)
-        points_insize_bbox = np.all((overlap_point_cloud.get_min_bound() <= scene_point_cloud.points)
+        point_indices_inside_bbox = np.all((overlap_point_cloud.get_min_bound() <= scene_point_cloud.points)
                                     & (scene_point_cloud.points <= overlap_point_cloud.get_max_bound()), axis=1)
 
-        prediction_labels_inside_bbox = prediction_labels[points_insize_bbox]
+        prediction_labels_inside_bbox = prediction_labels[point_indices_inside_bbox]
         bbox_label_names = np.unique(prediction_labels_inside_bbox)
         bbox_label_names = get_available_labels(bbox_label_names, label_dict)
 
-        label_table = PrettyTable()
-        label_table.hrules = ALL
-        label_table.field_names = ["Name", "Labels"]
-        label_table.add_row(["All scene", all_label_names])
-        label_table.add_row(["inside bounding box", bbox_label_names])
+        whole_scene_labels_table = PrettyTable()
+        whole_scene_labels_table.hrules = ALL
+        whole_scene_labels_table.field_names = ["All Available labels in whole scene", "Labels"]
+        for index, label_name_ in enumerate(all_label_names):
+            whole_scene_labels_table.add_row([index, label_name_])
 
-        print(label_table)
-        #visualize_labels(points, prediction_labels)
+        print(whole_scene_labels_table)
 
-        scene_with_segmented_overlap = Common3D.set_labels_for_overlaps_in_scene(
-                scene_pts=scene_point_cloud,
-                scene_colors=scene_colors,
-                overlap_pts=overlap_point_cloud,
-                color_space=label2color(prediction_labels)
-        )
-        
-        o3d.visualization.draw_geometries([bbox, scene_with_segmented_overlap], height=500, width=500, window_name="3D search result for {}".format(result_scan_id))
-    
+        bbox_labels_table = PrettyTable()
+        bbox_labels_table.hrules = ALL
+        bbox_labels_table.field_names = ["All Available labels in Bounding Box", "Labels"]
+        for index, label_name_ in enumerate(bbox_label_names):
+            bbox_labels_table.add_row([index, label_name_])
+
+        print(bbox_labels_table)
+
+        if args.label is not None:
+            logging.info("Loading scene with specific label..")
+
+            target_overlap = Common3D.set_target_label(
+                scene_ply["points"][point_indices_inside_bbox],
+                scene_colors[point_indices_inside_bbox],
+                prediction_labels[point_indices_inside_bbox], 
+                target_label=int(args.label)
+            )
+
+            Common3D.visualize(bbox, target_overlap, scene_point_cloud)
+
+        else:
+            logging.info("Loading scene with MVPNet segmentation..")
+            scene_with_segmented_overlap = Common3D.set_labels_for_overlaps_in_scene(
+                    scene_pts=scene_point_cloud,
+                    scene_colors=scene_colors,
+                    overlap_pts=overlap_point_cloud,
+                    color_space=label2color(prediction_labels)
+            )   
+            
+            Common3D.visualize(bbox, scene_with_segmented_overlap)
 
 if __name__ == "__main__":
     main()

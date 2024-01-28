@@ -1,26 +1,14 @@
-from collections import OrderedDict
-import os.path as osp
-import csv
+import copy
 import logging
 from typing import List
-import argparse
-import pickle
-import torch
 from pathlib import Path
-from glob import glob
-from SETTING import ROOT_DIRECTORY, SCANNET_DIRECTORY
-from mvpnet.utils.o3d_util import draw_point_cloud
-from mvpnet.utils.visualize import label2color
-from mvpnet.config.mvpnet_3d import cfg
+from SETTING import SCANNET_DIRECTORY
+from mvpnet.utils.visualize import SCANNET_COLOR_PALETTE
 
 import open3d as o3d
 import numpy as np
-import matplotlib.pyplot as plt
 from pathlib import Path
 from plyfile import PlyData
-from PIL import Image
-from tqdm import tqdm
-from prettytable import PrettyTable, ALL
 
 from .general import raise_path_error
 
@@ -159,6 +147,8 @@ class Common3D:
             this is used along with bounding box for segmented object
         """
         points_insize_bbox = np.all((overlap_pts.get_min_bound() <= scene_pts.points) & (scene_pts.points <= overlap_pts.get_max_bound()), axis=1)
+        print(type(scene_colors))
+        scene_colors = copy.deepcopy(scene_colors)
 
         if scene_colors.shape[1] == 3:
             scene_colors[points_insize_bbox] = color
@@ -172,7 +162,30 @@ class Common3D:
     
     @staticmethod
     def set_labels_for_overlaps_in_scene(scene_pts, scene_colors, overlap_pts, color_space):
-        points_insize_bbox = np.all((overlap_pts.get_min_bound() <= scene_pts.points) & (scene_pts.points <= overlap_pts.get_max_bound()), axis=1)
-        scene_colors[points_insize_bbox] = color_space[points_insize_bbox]
+        points_inside_bbox = np.all((overlap_pts.get_min_bound() <= scene_pts.points) & (scene_pts.points <= overlap_pts.get_max_bound()), axis=1)
+        scene_colors[points_inside_bbox] = color_space[points_inside_bbox]
         scene_pts.colors = o3d.utility.Vector3dVector(scene_colors)
         return scene_pts
+
+    @staticmethod
+    def set_target_label(points: np.ndarray, colors: np.ndarray, seg_labels: np.ndarray, target_label: int, window_name="Open3D"):
+        """
+        Load colored scene while changing color of targeted label in the scene.
+        visualize_target_label(points, seg_labels, target_label=1) # segment only the walls (label=1)
+        """
+
+        pc = o3d.geometry.PointCloud()
+        pc.points = o3d.utility.Vector3dVector(points[:, :3])
+
+        indices = np.where(seg_labels == target_label)
+        if target_label > len(SCANNET_COLOR_PALETTE):
+            raise IndexError("Label {} does not exists.".format(target_label))
+        rgb_color = np.array(SCANNET_COLOR_PALETTE[target_label]) / 255.
+        colors[indices] = rgb_color
+        pc.colors = o3d.utility.Vector3dVector(colors)
+
+        return pc
+
+    @staticmethod
+    def visualize(*pts, window_name="Open3D"):
+        o3d.visualization.draw_geometries([*pts], width=500, height=500, window_name=window_name)

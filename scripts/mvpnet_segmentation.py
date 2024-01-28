@@ -34,7 +34,8 @@ from utils.general import (
     Pickle
 )
 from utils.o3d import (
-    PLYFormat
+    PLYFormat,
+    Common3D
 )
 from utils.inference import (
     load_class_mapping,
@@ -55,6 +56,13 @@ def main():
         type=str,
         required=False,
         help="load segmentation from picke file",
+    )
+    parser.add_argument(
+        "--label",
+        type=int,
+        required=False,
+        help="load segmentation from picke file",
+        default=None
     )
     parser.add_argument(
         "--save",
@@ -140,7 +148,11 @@ def main():
         print(label_table)
 
         logging.info("Loading Segmentation window..")
-        visualize_labels(points, prediction_labels, window_name="MVPNet segmentation for {}".format(args.scene))
+        if args.label is not None:
+            scene = Common3D.set_target_label(points, scene_colors, prediction_labels, target_label=int(args.label))
+            Common3D.visualize(scene, window_name="Label {} for {}".format(args.label, args.scene))
+        else:
+            visualize_labels(points, prediction_labels, window_name="MVPNet segmentation for {}".format(args.scene))
 
         if args.save:
             if not Path(args.save).parent.exists():
