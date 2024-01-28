@@ -14,7 +14,8 @@ If you find our work useful, please cite our [paper](https://arxiv.org/abs/1909.
 [1. Setup CUDA](#compile-cuda-scripts)\
 [2. Preprocessing Data (Scannet Dataset)](#data-preprocessing)\
 [3. Train and Test](#train)\
-[4. Running scripts](#scripts)
+[4. Running scripts](#scripts)\
+[5. Setup Tensorboard](#tensorboard)
 
 # Compile CUDA scripts
 
@@ -186,6 +187,15 @@ python ./scripts/unet_segmentation.py --image ../inference/1334/1334.jpg --load 
 python ./scripts/2d_chunks_segmentation.py --scene scene0000_00 --load ../dataset/scannet/cache/chunks/scene0000_00.pickle
 ```
 
-## License
+# Tensorboard
+for MVPNet train/validation:
+
+`tensorboard --logdir F:\mvpnet\outputs\scannet\mvpnet_3d_unet_resnet34_pn2ssg`
+
+for 2D model train/validation:
+
+`tensorboard --logdir F:\mvpnet\outputs\scannet\unet_resnet34`
+
+# License
 The code is released under the MIT license.
 Copyright (c) 2019
