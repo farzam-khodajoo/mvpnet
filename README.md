@@ -146,7 +146,7 @@ python ./scripts/3d_search.py --target /path/to/samples/684 --rmse-max
   
 also the score report will be saved into `/path/to/samples/684/report/rmse.csv` for further use.
  
-## 4. Object spot will Segmentation included
+## 4. Object spot with Segmentation included
 <img src="statics/3d_mvpnet.png" height="300">
 
 ```bash
@@ -155,6 +155,11 @@ python ./scripts/3d_search.py --target /path/to/samples/684 --mvpnet --load ./da
 - `--target` same as before.
 - `--mvpnet` will segment unprojection using model
 - `--label` extract specific label from unprojection and remove the rest.
+
+in order to view only segmentation of specific label, use:
+```bash
+python ./scripts/3d_search.py --target /path/to/samples/684 --mvpnet --load ./dataset/cache/scene0000_00.pickle --label 0
+```
 
 ## 5. Scene segmentation
 <img src="statics/mvpnet_seg.png" width="300">
@@ -167,6 +172,12 @@ if you already saved segmentation into pickle file, use:
 ```bash
 python ./scripts/mvpnet_segmentation.py --scene scene0000_00 --load ./scene0000_00.pickle
 ```
+
+in order to view only segmentation of specific label, use:
+```bash
+python ./scripts/mvpnet_segmentation.py --scene scene0000_00 --load ./scene0000_00.pickle --label 0
+```
+
 ## 6. Image's segmentation Ground Truth
 <p float="left">
   <img src="statics/image_ground_truth.png" width="250"/>
